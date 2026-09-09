@@ -1731,6 +1731,7 @@
                                 </svg>
                             </span>
                         </button>
+                        <button type="button" class="icon-button love-button" data-love-open aria-label="Support AppyHP" title="Support AppyHP">❤</button>
                     </div>
                 </header>
 
@@ -1826,6 +1827,7 @@
     </div>
 
     @include('appyhp::partials.ai-settings')
+    @include('appyhp::partials.love-modal')
 
     <script>
         (function () {
@@ -3411,6 +3413,10 @@
             }
 
             function workflowCardActionIcon(name) {
+                if (name === 'ai') {
+                    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a1 1 0 0 1 1 1v1.05A7 7 0 0 1 19 11v5a3 3 0 0 1-3 3h-1.05A3.5 3.5 0 0 1 12 21.5 3.5 3.5 0 0 1 9.05 19H8a3 3 0 0 1-3-3v-5a7 7 0 0 1 6-6.95V3a1 1 0 0 1 1-1Zm-4 9v5c0 .55.45 1 1 1h6a1 1 0 0 0 1-1v-5a4 4 0 0 0-8 0Zm2.25 1.25a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm3.5 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5ZM4 11H3a1 1 0 1 0 0 2h1v-2Zm17 0h-1v2h1a1 1 0 1 0 0-2Z"/></svg>';
+                }
+
                 if (name === 'settings') {
                     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.28 7.28 0 0 0-1.69-.98L14.5 2.42A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.42L9.12 5.07c-.61.24-1.18.56-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.04.32-.06.65-.06.98s.02.66.07.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.13.22.39.31.61.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.25 1.18-.58 1.69-.98l2.49 1c.22.09.48 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.13-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>';
                 }

@@ -6,11 +6,43 @@ var aiPreview = null;
 var aiFeedback = { message: '', error: false };
 var aiConfigKey = '';
 var aiWriting = false;
+var loveModal = document.querySelector('[data-love-modal]');
+var loveCard = loveModal.querySelector('.love-card');
+var loveCopyStatus = loveModal.querySelector('[data-love-copy-status]');
+
+function closeLoveModal() {
+    loveModal.classList.remove('active');
+    loveModal.setAttribute('aria-hidden', 'true');
+    loveCopyStatus.textContent = '';
+}
+
+shell.querySelector('[data-love-open]').addEventListener('click', function () {
+    loveModal.classList.add('active');
+    loveModal.setAttribute('aria-hidden', 'false');
+    loveCard.focus();
+});
+loveModal.querySelector('[data-love-close]').addEventListener('click', closeLoveModal);
+loveModal.addEventListener('click', function (event) {
+    if (event.target === loveModal) closeLoveModal();
+});
+loveModal.querySelectorAll('[data-love-copy]').forEach(function (button) {
+    button.addEventListener('click', async function () {
+        try {
+            await navigator.clipboard.writeText(button.dataset.loveCopy);
+            loveCopyStatus.textContent = 'Address copied.';
+        } catch (error) {
+            loveCopyStatus.textContent = 'Copy is unavailable in this browser.';
+        }
+    });
+});
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && loveModal.classList.contains('active')) closeLoveModal();
+});
 var aiDialog = document.querySelector('[data-ai-settings-dialog]');
 var aiForm = document.querySelector('[data-ai-settings-form]');
 var aiSettingsButton = shell.querySelector('[data-ai-settings]');
 var aiProviderDefaults = { openai: 'https://api.openai.com/v1', compatible: 'http://localhost:11434/v1', anthropic: 'https://api.anthropic.com/v1' };
-aiSettingsButton.innerHTML = workflowCardActionIcon('settings');
+aiSettingsButton.innerHTML = workflowCardActionIcon('ai');
 
 function aiUrl(path) {
     return new URL('/appyhp/api/ai/' + path, window.location.origin);

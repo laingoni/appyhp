@@ -75,6 +75,39 @@
     .ai-settings-dialog .module-config-field label { font-size: 11px; }
     .ai-settings-dialog .module-config-field input, .ai-settings-dialog .module-config-field select { font-size: 13px; min-height: 36px; }
     [data-ai-remove-key][hidden], [data-ai-stop][hidden], [data-ai-table][hidden], [data-ai-suggestions][hidden], [data-ai-setup][hidden] { display: none; }
+    .love-button { color: #e25567; font-size: 17px; height: 28px; width: 28px; }
+    .studio-header > .header-right > .icon-button,
+    .studio-header > .header-right > .theme-button { border: 1px solid var(--light-line); border-radius: 3px; min-height: 28px; min-width: 28px; }
+    .dark .studio-header > .header-right > .icon-button,
+    .dark .studio-header > .header-right > .theme-button { border-color: var(--dark-line); }
+    .love-button:hover, .love-button:focus-visible { color: #be123c; transform: scale(1.08); }
+    .dark .love-button { color: #fb7185; }
+    .dark .love-button:hover, .dark .love-button:focus-visible { color: #fda4af; }
+    .love-modal { align-items: center; background: rgba(2, 6, 23, .62); display: none; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 180; }
+    .love-modal.active { display: flex; }
+    .love-card { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 6px; box-shadow: 0 20px 70px rgba(2, 6, 23, .35); color: var(--light-text); max-height: min(720px, calc(100dvh - 32px)); max-width: 520px; overflow: auto; padding: 24px; position: relative; width: 100%; }
+    .dark .love-card { background: var(--dark-canvas); border-color: var(--dark-line); color: var(--dark-text); }
+    .love-close { background: transparent; border: 0; color: inherit; cursor: pointer; font-family: sans-serif; font-size: 24px; line-height: 1; padding: 2px 6px; position: absolute; right: 10px; top: 10px; }
+    .love-mark { color: #e25567; font-size: 28px; line-height: 1; margin-bottom: 12px; }
+    .dark .love-mark { color: #fb7185; }
+    .love-card h2 { font-size: 18px; line-height: 1.35; margin: 0 32px 8px 0; }
+    .love-intro { color: #475569; font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+    .dark .love-intro { color: #cbd5e1; }
+    .love-links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .love-links a { border: 1px solid var(--light-line); border-radius: 3px; color: inherit; font-size: 12px; padding: 7px 10px; text-decoration: none; }
+    .dark .love-links a { border-color: var(--dark-line); }
+    .love-links a:hover, .love-links a:focus-visible { border-color: #0d9477; color: #087c64; }
+    .love-external-icon { display: inline-block; font-size: 14px; font-weight: 700; line-height: 0; margin-left: 3px; transform: translateY(-1px); }
+    .love-wallets { display: grid; gap: 8px; }
+    .love-wallet { align-items: center; background: var(--console-light); border: 1px solid var(--light-line); border-radius: 3px; display: grid; gap: 6px 8px; grid-template-columns: 105px minmax(0, 1fr) auto; padding: 8px; }
+    .dark .love-wallet { background: var(--console-dark); border-color: var(--dark-line); }
+    .love-wallet-label { font-size: 12px; font-weight: 700; }
+    .love-wallet code { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; font-size: 10px; min-width: 0; overflow-wrap: anywhere; }
+    .love-copy { background: transparent; border: 1px solid var(--light-line); border-radius: 2px; color: inherit; cursor: pointer; font: inherit; font-size: 11px; padding: 4px 7px; }
+    .dark .love-copy { border-color: var(--dark-line); }
+    .love-copy:hover, .love-copy:focus-visible { border-color: #0d9477; color: #087c64; }
+    .love-copy-status { color: #087c64; font-size: 12px; min-height: 18px; margin: 10px 0 0; }
+    .dark .love-copy-status { color: #6ee7b7; }
 
     @media (max-width: 1000px) {
         .workflow-workspace > .workflow-config-panel { flex-basis: 62%; }
@@ -93,5 +126,10 @@
         .workflow-editor-title { min-width: 0; }
         .ai-target-fields { grid-template-columns: minmax(0, 1fr); }
         .ai-code { max-height: 280px; }
+        .love-card { padding: 20px 14px; }
+        .love-wallet { grid-template-columns: minmax(0, 1fr) auto; }
+        .love-wallet-label { grid-column: 1 / -1; }
+        .love-wallet code { grid-column: 1; }
+        .love-copy { grid-column: 2; grid-row: 2; }
     }
 </style>
