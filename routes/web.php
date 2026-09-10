@@ -27,6 +27,7 @@ Route::get('/appyhp/studio/web/{path}', function (string $path) {
         'css' => 'text/css; charset=UTF-8',
         'js' => 'application/javascript; charset=UTF-8',
         'html' => 'text/html; charset=UTF-8',
+        'svg' => 'image/svg+xml',
         default => 'application/octet-stream',
     };
 
@@ -45,6 +46,7 @@ Route::get('/appyhp/studio/{path}', function (string $path) {
         'css' => 'text/css; charset=UTF-8',
         'js' => 'application/javascript; charset=UTF-8',
         'html' => 'text/html; charset=UTF-8',
+        'svg' => 'image/svg+xml',
         default => 'application/octet-stream',
     };
 

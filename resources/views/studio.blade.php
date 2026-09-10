@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Appyhp Studio">
     <meta name="csrf-token" content="{{ $studioCsrfToken }}">
-    <title>Studio</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url('/appyhp/studio/assets/appyhp-icon.svg') }}">
+    <title>AppyHP Studio</title>
     <script>
         (function () {
             var storedTheme = localStorage.getItem('theme') || 'dark';
