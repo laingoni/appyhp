@@ -3,7 +3,7 @@
         <button type="button" class="love-close" data-love-close aria-label="Close support message" title="Close">&times;</button>
         <div class="love-mark" aria-hidden="true">❤</div>
         <h2 id="love-title">We love that you are creating on AppyHP</h2>
-        <p class="love-intro">You can support the project by contributing on GitHub or buying us a coffee.</p>
+        <p class="love-intro">Donations support AppyHP’s ongoing maintenance and development. You can help by contributing on GitHub or buying us a coffee.</p>
         <div class="love-links">
             <a href="https://github.com/laingoni/appyhp" target="_blank" rel="noopener noreferrer">Contribute on GitHub <span class="love-external-icon" aria-hidden="true">↗</span></a>
             <a href="https://www.buymeacoffee.com/" target="_blank" rel="noopener noreferrer">Buy us a coffee <span class="love-external-icon" aria-hidden="true">↗</span></a>
