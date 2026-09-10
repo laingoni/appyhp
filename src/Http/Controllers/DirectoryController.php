@@ -2,6 +2,7 @@
 
 namespace Alliswell\Appyhp\Http\Controllers;
 
+use Alliswell\Appyhp\Support\ModuleFileGenerator;
 use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -9,7 +10,7 @@ use Illuminate\Support\Str;
 
 class DirectoryController
 {
-    public function __construct(private RuntimeStorage $runtime) {}
+    public function __construct(private RuntimeStorage $runtime, private ModuleFileGenerator $moduleFiles) {}
 
     private const MAX_FILE_BYTES = 1048576;
 
@@ -66,6 +67,7 @@ class DirectoryController
             'path' => $relativePath,
             'name' => basename($file),
             'content' => $contents,
+            'hash' => hash('sha256', $contents),
         ]);
     }
 
@@ -106,8 +108,11 @@ class DirectoryController
         $relativePath = $this->cleanRelativePath((string) $request->input('path', ''));
         abort_if($relativePath === '' || str_ends_with($relativePath, '/'), 422, 'Choose a filename.');
         $file = $this->basePath() . DIRECTORY_SEPARATOR . $relativePath;
-        $parent = $this->resolveExistingPath($this->parentRelativePath($relativePath));
         $this->assertInsideBase($file);
+
+        if (is_link($file)) {
+            abort(422, 'Module files cannot target symbolic links.');
+        }
 
         if (file_exists($file) && ! is_file($file)) {
             abort(422, 'The target is a folder. Choose a filename.');
@@ -116,13 +121,30 @@ class DirectoryController
         $content = (string) $request->input('content', '');
 
         $createOnly = (bool) $request->input('createOnly', false);
-        if ((! $createOnly || ! file_exists($file)) && file_put_contents($file, $content, LOCK_EX) === false) {
-            abort(500, 'Unable to save file.');
+        $generation = null;
+        $emptyModuleFile = is_file($file) && filesize($file) === 0;
+        if ($createOnly && (! file_exists($file) || $emptyModuleFile) && $content === '' && is_string($request->input('moduleType'))) {
+            $config = $request->input('moduleConfig', []);
+            if ($emptyModuleFile && ! unlink($file)) {
+                abort(500, 'Unable to replace the empty module file.');
+            }
+            $generation = $this->moduleFiles->generate(
+                $relativePath,
+                (string) $request->input('moduleType'),
+                is_array($config) ? $config : [],
+            );
+        } elseif (! $createOnly || ! file_exists($file)) {
+            $this->resolveExistingPath($this->parentRelativePath($relativePath));
+            if (file_put_contents($file, $content, LOCK_EX) === false) {
+                abort(500, 'Unable to save file.');
+            }
         }
 
         return response()->json([
             'path' => $relativePath,
             'saved' => true,
+            'generation' => $generation,
+            'hash' => is_file($file) ? hash_file('sha256', $file) : null,
         ]);
     }
 

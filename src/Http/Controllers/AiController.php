@@ -4,6 +4,7 @@ namespace Alliswell\Appyhp\Http\Controllers;
 
 use Alliswell\Appyhp\Support\AiGateway;
 use Alliswell\Appyhp\Support\AiSettings;
+use Alliswell\Appyhp\Support\GenerationFileRequest;
 use Alliswell\Appyhp\Support\GenerationResult;
 use Alliswell\Appyhp\Support\ProjectFiles;
 use Alliswell\Appyhp\Support\WorkflowContext;
@@ -65,13 +66,16 @@ class AiController
             'workflow.edges.*.from' => ['required', 'string', 'max:160'],
             'workflow.edges.*.to' => ['required', 'string', 'max:160'],
             'workflow.edges.*.label' => ['nullable', 'string', 'max:300'],
+            'fileAccess' => ['sometimes', 'array', 'max:5'],
+            'fileAccess.*.path' => ['required', 'string', 'max:700', 'distinct'],
+            'fileAccess.*.decision' => ['required', Rule::in(['grant', 'deny'])],
         ]);
         $selected = collect($input['workflow']['modules'])->firstWhere('id', $input['moduleId']);
         abort_unless($selected && ! empty($selected['config']['folder']) && ! empty($selected['config']['filename']), 422, 'Choose a target folder and filename.');
         abort_if(trim($selected['config']['prompt'] ?? '') === '', 422, 'Describe what this module should do.');
         $resolved = $settings->read();
         abort_unless($settings->publicSettings($resolved)['configured'], 422, 'Configure an AI provider and model in Settings first.');
-        $context = $builder->build($input['workflow'], $input['moduleId']);
+        $context = $builder->build($input['workflow'], $input['moduleId'], $input['fileAccess'] ?? []);
 
         return response()->stream(function () use ($gateway, $resolved, $builder, $context): void {
             set_time_limit((int) config('appyhp.ai.timeout', 120) + 15);
@@ -92,7 +96,16 @@ class AiController
 
                     return ! connection_aborted();
                 });
-                $emit('done', GenerationResult::parse($output, $context));
+                $fileRequest = GenerationFileRequest::parse($output);
+                if ($fileRequest !== null) {
+                    $alreadyDecided = collect($context['file_access']['decisions'])->contains('path', $fileRequest['path']);
+                    if ($alreadyDecided || $context['file_access']['remaining_requests'] < 1) {
+                        throw new \RuntimeException('The provider repeated or exceeded its additional file requests. Generate again.');
+                    }
+                    $emit('file_request', $fileRequest);
+                } else {
+                    $emit('done', GenerationResult::parse($output, $context));
+                }
             } catch (\Throwable $exception) {
                 if (! connection_aborted()) {
                     $message = $exception instanceof \RuntimeException ? $exception->getMessage() : 'Generation failed. The previous draft has been kept. Try again.';

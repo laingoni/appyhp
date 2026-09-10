@@ -6,6 +6,8 @@ var aiPreview = null;
 var aiFeedback = { message: '', error: false };
 var aiConfigKey = '';
 var aiWriting = false;
+var aiSourceLoads = {};
+var aiPendingFileRequest = null;
 var loveModal = document.querySelector('[data-love-modal]');
 var loveCard = loveModal.querySelector('.love-card');
 var loveCopyStatus = loveModal.querySelector('[data-love-copy-status]');
@@ -117,18 +119,43 @@ async function publishGeneratedFiles(workflows) {
             var config = module.config || {};
             var path = [config.folder, config.filename].filter(Boolean).join('/');
             if (!path) return;
-            var code = config.ai && config.ai.code;
+            var result = config.ai || {};
+            var aligned = result.path === path && typeof result.code === 'string';
+            var shouldWrite = aligned && (result.dirty === true || (result.dirty !== false && result.source !== 'file'));
+            var code = shouldWrite ? result.code : '';
             var publish = Promise.resolve();
             var previousPath = config.previousPath || (config.ai && config.ai.path !== path ? config.ai.path : '');
-            if (previousPath && previousPath !== path) {
+            if (module.type !== 'route' && previousPath && previousPath !== path) {
                 publish = postJson(directoryUrl('/rename'), { path: previousPath, name: config.filename, allowMissing: true });
             }
             pending.push(publish.then(function () {
+                var moduleConfig = Object.assign({}, config);
+                delete moduleConfig.ai;
+                delete moduleConfig.previousPath;
+                moduleConfig.frontend = (workflow.meta || {}).frontend || aiProject.frontend || 'blade';
+                if (shouldWrite) {
+                    return postJson(aiUrl('file'), {
+                        path: path,
+                        content: code,
+                        expectedHash: result.baseHash == null ? null : result.baseHash
+                    });
+                }
                 return postJson(directoryUrl('/file'), {
                     path: path,
-                    content: code || '',
-                    createOnly: !code
+                    content: '',
+                    createOnly: true,
+                    moduleType: module.type,
+                    moduleConfig: moduleConfig
                 }, 'PUT');
+            }).then(function (response) {
+                delete config.previousPath;
+                if (config.ai && config.ai.path !== path) {
+                    delete config.ai;
+                } else if (shouldWrite && config.ai) {
+                    config.ai.dirty = false;
+                    config.ai.baseHash = response.hash;
+                    config.ai.writtenAt = new Date().toISOString();
+                }
             }));
         });
     });
@@ -278,13 +305,15 @@ function streamCode(source) {
     return closing >= 0 ? content.slice(0, closing).replace(/\r$/, '') : content.replace(/\n`{1,2}$/, '');
 }
 
-async function generateModule() {
+async function generateModule(fileAccess) {
+    fileAccess = Array.isArray(fileAccess) ? fileAccess : [];
     if (aiWriting) return;
     var workflow = workflowStore.getActiveWorkflow();
     var module = workflowStore.getSelectedModule();
     if (!workflow || !module) return;
     if (!aiSettings || !aiSettings.configured) { openAiSettings(); return; }
     cancelAiGeneration();
+    aiPendingFileRequest = null;
     if (!(module.config.prompt || '').trim()) {
         aiFeedback = { message: 'Describe what this module should do.', error: true };
         renderAiOutput(module, workflow);
@@ -292,7 +321,7 @@ async function generateModule() {
     }
     var job = {
         controller: new AbortController(), workflowId: workflow.id, moduleId: module.id,
-        fingerprint: workflowFingerprint(workflow), raw: '', complete: false
+        fingerprint: workflowFingerprint(workflow), raw: '', complete: false, fileAccess: fileAccess
     };
     aiJob = job;
     aiPreview = { code: '' };
@@ -303,7 +332,7 @@ async function generateModule() {
         var response = await fetch(aiUrl('generate'), {
             method: 'POST', signal: job.controller.signal,
             headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-            body: JSON.stringify({ moduleId: module.id, workflow: workflow })
+            body: JSON.stringify({ moduleId: module.id, workflow: workflow, fileAccess: fileAccess })
         });
         if (!response.ok) {
             var payload = await response.json().catch(function () { return {}; });
@@ -341,6 +370,8 @@ async function generateModule() {
                 var next = predicted.modules.find(function (entry) { return entry.id === job.moduleId; });
                 var result = Object.assign({}, payload);
                 delete result.config;
+                result.source = 'ai';
+                result.dirty = true;
                 next.config = Object.assign({}, next.config, payload.config, { ai: result });
                 result.contextHash = workflowFingerprint(predicted);
                 job.complete = true;
@@ -348,6 +379,24 @@ async function generateModule() {
                 aiPreview = null;
                 aiFeedback = { message: 'Draft ready.', error: false };
                 workflowStore.updateModule(job.moduleId, { config: next.config });
+            }
+            if (event === 'file_request') {
+                var currentWorkflow = workflowStore.getActiveWorkflow();
+                if (!currentWorkflow || currentWorkflow.id !== job.workflowId || workflowFingerprint(currentWorkflow) !== job.fingerprint) {
+                    throw new Error('The workflow changed during generation. Generate again.');
+                }
+                job.complete = true;
+                aiJob = null;
+                aiPreview = null;
+                aiPendingFileRequest = {
+                    workflowId: job.workflowId,
+                    moduleId: job.moduleId,
+                    fingerprint: job.fingerprint,
+                    path: payload.path,
+                    reason: payload.reason,
+                    fileAccess: job.fileAccess.slice()
+                };
+                aiFeedback = { message: 'The AI needs permission to read another project file.', error: false };
             }
         }
         while (!job.complete && !job.controller.signal.aborted) {
@@ -385,6 +434,7 @@ function renderAiModuleConfig(state) {
     var key = module ? workflow.id + ':' + module.id : '';
     if (key !== aiConfigKey) {
         cancelAiGeneration();
+        aiPendingFileRequest = null;
         aiConfigKey = key;
         aiFeedback = { message: '', error: false };
         moduleConfigPanel.innerHTML = '';
@@ -395,16 +445,17 @@ function renderAiModuleConfig(state) {
 
     if (!moduleConfigPanel.firstChild) {
         var definition = moduleDefinition(module.type);
-        moduleConfigPanel.innerHTML = '<header class="module-config-header"><span><span class="workflow-title" data-ai-module-title></span><span class="workflow-meta" data-ai-module-kind></span></span><button type="button" class="ai-close" data-ai-close aria-label="Close module configuration" title="Close">&times;</button></header>' +
+        moduleConfigPanel.innerHTML = '<header class="module-config-header"><button type="button" class="module-editor-back" data-ai-close aria-label="Back to workflow canvas" title="Back to workflow canvas"><span aria-hidden="true">&#8249;</span><span>Back</span></button><span><span class="workflow-title" data-ai-module-title></span><span class="workflow-meta" data-ai-module-kind></span></span></header>' +
             '<details class="ai-section"><summary>Laravel configuration</summary><div class="ai-fields" data-ai-fields></div></details>' +
             '<div data-ai-route-type></div>' +
             '<div class="module-config-body"><div data-ai-name></div><div class="ai-target-fields" data-ai-target></div><div data-ai-prompt></div>' +
             '<div class="ai-toolbar"><label class="ai-live"><input type="checkbox" data-ai-live>Live</label><button class="workflow-action" type="button" data-ai-stop hidden>Stop</button><button class="workflow-action ai-primary" type="button" data-ai-generate>Generate</button><button class="workflow-action" type="button" data-ai-setup>AI settings</button></div>' +
             '<p class="ai-status" role="status" aria-live="polite" data-ai-message></p>' +
-            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Generated code</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button></div>' +
-            '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Generated code" placeholder="Write or generate code for this module..."></textarea>' +
+            '<section class="ai-file-request" data-ai-file-request hidden><strong>AI requests another file</strong><code data-ai-file-request-path></code><p data-ai-file-request-reason></p><div class="ai-toolbar"><button class="workflow-action ai-primary" type="button" data-ai-file-grant>Grant access</button><button class="workflow-action" type="button" data-ai-file-deny>Deny and continue</button></div></section>' +
+            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Module file</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button></div>' +
+            '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Module file code" placeholder="Loading the module file..."></textarea>' +
             '<section class="ai-section" data-ai-table hidden></section>' +
-            '<div class="ai-toolbar"><span class="ai-status" data-ai-path></span><button class="workflow-action ai-primary" type="button" data-ai-write>Write file</button></div>' +
+            '<div class="ai-toolbar"><span class="ai-status" data-ai-path></span><button class="workflow-action ai-primary" type="button" data-ai-write>Save file</button></div>' +
             '<p class="ai-status" data-ai-summary></p>' +
             '<section class="ai-section" data-ai-suggestions hidden></section>' +
             '<section class="ai-section"><h3 class="ai-section-title">Connections</h3><div class="ai-connections" data-ai-connections></div></section></div>';
@@ -430,8 +481,8 @@ function renderAiModuleConfig(state) {
         var fields = moduleConfigPanel.querySelector('[data-ai-fields]');
         addConfigField(fields, module, { key: 'description', label: 'Description', type: 'textarea', root: true });
         (definition.fields || []).forEach(function (field) { addConfigField(fields, module, field); });
-        moduleConfigPanel.querySelector('[data-ai-close]').addEventListener('click', function () { workflowStore.selectModule(null); });
-        moduleConfigPanel.querySelector('[data-ai-generate]').addEventListener('click', generateModule);
+        moduleConfigPanel.querySelector('[data-ai-close]').addEventListener('click', closeModuleEditor);
+        moduleConfigPanel.querySelector('[data-ai-generate]').addEventListener('click', function () { generateModule(); });
         moduleConfigPanel.querySelector('[data-ai-setup]').addEventListener('click', openAiSettings);
         moduleConfigPanel.querySelector('[data-ai-stop]').addEventListener('click', function () {
             cancelAiGeneration('Generation stopped.');
@@ -466,6 +517,7 @@ function renderAiModuleConfig(state) {
             var ai = Object.assign({}, current.config.ai || {}, {
                 code: code,
                 path: [current.config.folder, current.config.filename].filter(Boolean).join('/'),
+                dirty: true,
                 editedAt: new Date().toISOString()
             });
             workflowStore.updateModule(module.id, { config: { ai: ai } }, { historyGroup: module.id + ':code' });
@@ -481,6 +533,8 @@ function renderAiModuleConfig(state) {
             window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         });
         moduleConfigPanel.querySelector('[data-ai-write]').addEventListener('click', writeGeneratedFile);
+        moduleConfigPanel.querySelector('[data-ai-file-grant]').addEventListener('click', function () { answerAiFileRequest('grant'); });
+        moduleConfigPanel.querySelector('[data-ai-file-deny]').addEventListener('click', function () { answerAiFileRequest('deny'); });
     }
 
     moduleConfigPanel.querySelector('[data-ai-module-title]').textContent = module.label;
@@ -497,6 +551,78 @@ function renderAiModuleConfig(state) {
     live.title = live.disabled ? 'AI settings are still loading' : 'Live generation';
     renderAiOutput(module, workflow);
     renderAiConnections(module, workflow);
+    ensureModuleSource(module, workflow);
+}
+
+function answerAiFileRequest(decision) {
+    var request = aiPendingFileRequest;
+    var workflow = workflowStore.getActiveWorkflow();
+    var module = workflowStore.getSelectedModule();
+    if (!request || !workflow || !module || workflow.id !== request.workflowId || module.id !== request.moduleId
+        || workflowFingerprint(workflow) !== request.fingerprint) {
+        aiPendingFileRequest = null;
+        aiFeedback = { message: 'The workflow changed. Generate again.', error: true };
+        renderModuleConfig(workflowStore.getState());
+        return;
+    }
+    var access = request.fileAccess.concat([{ path: request.path, decision: decision }]);
+    aiPendingFileRequest = null;
+    aiFeedback = { message: decision === 'grant' ? 'Reading ' + request.path + ' and continuing...' : 'Access denied. Continuing with the available context...', error: false };
+    renderAiOutput(module, workflow);
+    generateModule(access);
+}
+
+function moduleSourceKey(module, workflow) {
+    return workflow.id + ':' + module.id + ':' + [module.config.folder, module.config.filename].filter(Boolean).join('/');
+}
+
+function ensureModuleSource(module, workflow) {
+    var path = [module.config.folder, module.config.filename].filter(Boolean).join('/');
+    var result = module.config.ai || {};
+    if (!path || (result.path === path && typeof result.code === 'string') || module.config.previousPath) return;
+    var key = moduleSourceKey(module, workflow);
+    if (aiSourceLoads[key]) return;
+    aiSourceLoads[key] = 'loading';
+    renderAiOutput(module, workflow);
+
+    var moduleConfig = Object.assign({}, module.config);
+    delete moduleConfig.ai;
+    delete moduleConfig.previousPath;
+    moduleConfig.frontend = (workflow.meta || {}).frontend || aiProject.frontend || 'blade';
+
+    postJson(directoryUrl('/file'), {
+        path: path,
+        content: '',
+        createOnly: true,
+        moduleType: module.type,
+        moduleConfig: moduleConfig
+    }, 'PUT').then(function () {
+        return requestJson(directoryUrl('/file', { path: path }));
+    }).then(function (payload) {
+        aiSourceLoads[key] = 'loaded';
+        var state = workflowStore.getState();
+        var latestWorkflow = state.workflows.find(function (entry) { return entry.id === workflow.id; });
+        var latestModule = latestWorkflow && latestWorkflow.modules.find(function (entry) { return entry.id === module.id; });
+        if (!latestModule || [latestModule.config.folder, latestModule.config.filename].filter(Boolean).join('/') !== path) return;
+        workflowStore.updateModule(module.id, {
+            config: {
+                ai: {
+                    code: payload.content || '',
+                    path: path,
+                    baseHash: payload.hash,
+                    source: 'file',
+                    dirty: false,
+                    loadedAt: new Date().toISOString()
+                }
+            }
+        }, { workflowId: workflow.id, skipHistory: true });
+    }).catch(function (error) {
+        aiSourceLoads[key] = 'error';
+        if (workflowStore.getSelectedModule() && workflowStore.getSelectedModule().id === module.id) {
+            aiFeedback = { message: error.message || 'Unable to load the module file.', error: true };
+            renderModuleConfig(workflowStore.getState());
+        }
+    });
 }
 
 function displayedAiCode() {
@@ -521,16 +647,24 @@ function renderAiOutput(module, workflow) {
     var status = moduleConfigPanel.querySelector('[data-ai-message]');
     status.textContent = aiFeedback.message || (!aiSettings ? 'Loading AI settings...' : (!aiSettings.configured ? 'AI provider not configured.' : ''));
     status.dataset.error = aiFeedback.error ? 'true' : 'false';
+    var fileRequest = moduleConfigPanel.querySelector('[data-ai-file-request]');
+    var requestMatches = aiPendingFileRequest && aiPendingFileRequest.workflowId === workflow.id && aiPendingFileRequest.moduleId === module.id;
+    fileRequest.hidden = !requestMatches;
+    if (requestMatches) {
+        fileRequest.querySelector('[data-ai-file-request-path]').textContent = aiPendingFileRequest.path;
+        fileRequest.querySelector('[data-ai-file-request-reason]').textContent = aiPendingFileRequest.reason;
+    }
     var codeState = moduleConfigPanel.querySelector('[data-ai-code-state]');
-    codeState.textContent = aiJob ? 'Streaming code' : stale ? 'Workflow changed since generation' : result.code ? 'Generated code' : 'Code draft';
+    var loading = aiSourceLoads[moduleSourceKey(module, workflow)] === 'loading';
+    codeState.textContent = aiJob ? 'Streaming code' : loading ? 'Loading file' : stale ? 'Workflow changed since generation' : result.dirty && result.source === 'file' ? 'Edited file' : result.source === 'file' ? 'File content' : result.code ? 'Generated code' : 'Module file';
     codeState.dataset.stale = stale ? 'true' : 'false';
     moduleConfigPanel.querySelector('[data-ai-stop]').hidden = !aiJob && !aiTimer;
     moduleConfigPanel.querySelector('[data-ai-generate]').disabled = Boolean(aiJob || aiWriting);
     moduleConfigPanel.querySelector('[data-ai-setup]').hidden = Boolean(aiSettings && aiSettings.configured);
     moduleConfigPanel.querySelector('[data-ai-copy]').disabled = !code;
     moduleConfigPanel.querySelector('[data-ai-download]').disabled = !code;
-    moduleConfigPanel.querySelector('[data-ai-write]').disabled = !result.code || Boolean(aiJob) || stale || aiWriting || result.path !== path;
-    moduleConfigPanel.querySelector('[data-ai-write]').textContent = aiWriting ? 'Writing...' : 'Write file';
+    moduleConfigPanel.querySelector('[data-ai-write]').disabled = typeof result.code !== 'string' || Boolean(aiJob) || stale || aiWriting || result.path !== path;
+    moduleConfigPanel.querySelector('[data-ai-write]').textContent = aiWriting ? 'Saving...' : 'Save file';
     moduleConfigPanel.querySelector('[data-ai-path]').textContent = path;
     moduleConfigPanel.querySelector('[data-ai-summary]').textContent = result.summary || '';
     renderAiTable(result.table, Boolean(aiJob || stale));
@@ -625,9 +759,14 @@ async function writeGeneratedFile() {
         var latestWorkflow = workflowStore.getState().workflows.find(function (entry) { return entry.id === workflowId; });
         var latestModule = latestWorkflow && latestWorkflow.modules.find(function (entry) { return entry.id === moduleId; });
         if (latestModule && latestModule.config.ai && latestModule.config.ai.code === result.code && latestModule.config.ai.path === result.path) {
-            workflowStore.updateModule(moduleId, { config: { ai: Object.assign({}, latestModule.config.ai, { baseHash: response.hash, writtenAt: new Date().toISOString() }) } }, { workflowId: workflowId });
+            workflowStore.updateModule(moduleId, { config: { ai: Object.assign({}, latestModule.config.ai, { baseHash: response.hash, dirty: false, writtenAt: new Date().toISOString() }) } }, { workflowId: workflowId, skipHistory: true });
         }
-        if (selectedFilePath === result.path && !fileDirty) { fileEditor.value = result.code; updateCodeEditor(); }
+        if (selectedFilePath === result.path && !fileDirty) {
+            fileEditor.value = result.code;
+            selectedFileHash = response.hash || selectedFileHash;
+            fileHistoryCurrent = captureFileHistorySnapshot();
+            updateCodeEditor();
+        }
         var parent = parentPathOf(result.path);
         if (directoryContainers[parent]) loadDirectory(parent);
         aiFeedback = { message: 'Written to ' + result.path + '.', error: false };

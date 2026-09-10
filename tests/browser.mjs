@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +10,11 @@ const { chromium } = await import(playwrightModule.startsWith('/') ? pathToFileU
 const project = await mkdtemp(join(tmpdir(), 'appyhp-browser-'));
 const artifacts = process.env.APPYHP_BROWSER_ARTIFACTS || join(project, 'screenshots');
 await mkdir(artifacts, { recursive: true });
+await mkdir(join(project, 'routes'), { recursive: true });
+await mkdir(join(project, 'app/Support'), { recursive: true });
+await writeFile(join(project, 'routes/web.php'), "<?php\n// WEB_ROUTE_FILE\n");
+await writeFile(join(project, 'routes/api.php'), "<?php\n// API_ROUTE_FILE\n");
+await writeFile(join(project, 'app/Support/TaxRules.php'), "<?php\n// TAX_RULES_CONTRACT\n");
 const port = Number(process.env.APPYHP_BROWSER_PORT || 8127);
 const url = `http://127.0.0.1:${port}`;
 const server = spawn('php', ['-S', `127.0.0.1:${port}`, resolve('tests/browser-router.php')], {
@@ -42,7 +47,11 @@ try {
     await page.screenshot({ path: join(artifacts, 'settings-desktop.png') });
     await page.getByRole('button', { name: 'Save settings', exact: true }).click();
     await page.locator('[data-ai-settings-dialog]').waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), false);
     await page.locator('.module-node[data-type="table"] .module-node-label').click();
+    await page.waitForFunction(() => document.querySelector('[data-module-config-panel]').clientWidth > 1300);
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('module-editor-active')), true);
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), true);
     const prompt = page.getByLabel('What should this module do?', { exact: true });
     await prompt.fill('Create customers with name and unique email.');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Schema::create'));
@@ -60,6 +69,12 @@ try {
     assert.equal(await prompt.inputValue(), 'Create users with status and unique email.');
     assert.equal(await page.locator('[data-ai-table] tbody tr').count(), 4);
     assert.match(await page.locator('[data-ai-code]').inputValue(), /status/);
+    const target = await page.locator('[data-ai-path]').textContent();
+    assert.doesNotMatch(await readFile(join(project, target), 'utf8'), /status/, 'An AI draft must remain unsaved while Auto-save is off');
+    await page.locator('[data-undo]').click();
+    await page.waitForFunction((previous) => document.querySelector('[data-ai-code]').value === previous, firstCode);
+    await page.locator('[data-redo]').click();
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('status'));
 
     await page.locator('[data-autosave]').check();
     await page.locator('[data-manual-save]').click();
@@ -67,7 +82,6 @@ try {
     assert.equal(await page.locator('[data-ai-write]').isEnabled(), true, 'Saving must not stale the generated draft');
     await page.locator('[data-ai-write]').click();
     await page.locator('[data-ai-message]').filter({ hasText: 'Written to ' }).waitFor();
-    const target = await page.locator('[data-ai-path]').textContent();
     assert.match(await readFile(join(project, target), 'utf8'), /status/);
     await page.locator('[data-manual-save]').click();
     await page.waitForFunction(() => !document.querySelector('[data-manual-save]').classList.contains('dirty'));
@@ -85,7 +99,25 @@ try {
     assert.equal(await prompt.inputValue(), 'Create users with status and unique email.');
 
     await page.locator('[data-ai-close]').click();
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), false);
+    await page.locator('.sidebar-toggle-button').click();
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), true);
     await page.locator('.module-node[data-type="route"] .module-node-label').click();
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
+    await page.getByLabel('Route file', { exact: true }).selectOption('api');
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('API_ROUTE_FILE'));
+    assert.match(await readFile(join(project, 'routes/web.php'), 'utf8'), /WEB_ROUTE_FILE/);
+    assert.match(await readFile(join(project, 'routes/api.php'), 'utf8'), /API_ROUTE_FILE/);
+    await page.getByLabel('Route file', { exact: true }).selectOption('channels');
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Facades\\Broadcast'));
+    assert.match(await readFile(join(project, 'routes/channels.php'), 'utf8'), /Facades\\Broadcast/);
+    await page.getByLabel('Route file', { exact: true }).selectOption('web');
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
+    await page.locator('[data-ai-code]').fill("<?php\n// WEB_ROUTE_FILE_EDITED\n");
+    await page.getByRole('button', { name: 'Save file', exact: true }).click();
+    await page.locator('[data-ai-message]').filter({ hasText: 'Written to routes/web.php.' }).waitFor();
+    assert.match(await readFile(join(project, 'routes/web.php'), 'utf8'), /WEB_ROUTE_FILE_EDITED/);
+    assert.match(await readFile(join(project, 'routes/api.php'), 'utf8'), /API_ROUTE_FILE/);
     await page.getByText('Laravel configuration', { exact: true }).click();
     await page.getByLabel('URI', { exact: true }).fill('/customers');
     await page.getByLabel('URI', { exact: true }).press('Tab');
@@ -96,7 +128,25 @@ try {
     assert.equal(context.workflow.modules.find((module) => module.type === 'route').config.uri, '/customers');
     assert.ok(context.workflow.edges.length > 0);
 
+    await prompt.fill('request tax rules and implement customer totals');
+    await page.locator('[data-ai-file-request]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-ai-file-request-path]').textContent(), 'app/Support/TaxRules.php');
+    await page.getByRole('button', { name: 'Grant access', exact: true }).click();
+    await page.getByText('Draft ready.', { exact: true }).waitFor();
+    const grantedContext = JSON.parse(await readFile(join(project, 'last-ai-context.json'), 'utf8'));
+    assert.equal(grantedContext.file_access.decisions[0].status, 'granted');
+    assert.match(grantedContext.file_access.decisions[0].source_file.content, /TAX_RULES_CONTRACT/);
+    await prompt.fill('request tax rules but continue when denied');
+    await page.locator('[data-ai-file-request]').waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: 'Deny and continue', exact: true }).click();
+    await page.getByText('Draft ready.', { exact: true }).waitFor();
+    const deniedContext = JSON.parse(await readFile(join(project, 'last-ai-context.json'), 'utf8'));
+    assert.equal(deniedContext.file_access.decisions[0].status, 'denied');
+    assert.equal('source_file' in deniedContext.file_access.decisions[0], false);
+
     await page.locator('[data-ai-close]').click();
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), true);
+    await page.locator('.sidebar-toggle-button').click();
     await page.getByRole('button', { name: '+Inertia Page', exact: true }).click();
     await page.locator('.module-node[data-type="inertia-page"] .module-node-label').click();
     await prompt.fill('Show an Inertia users page.');
@@ -109,6 +159,35 @@ try {
         assert.ok((await page.getByLabel('Filename', { exact: true }).inputValue()).endsWith(`.${extension}`));
         assert.ok((await page.locator('[data-ai-code]').inputValue()).includes(adapter));
     }
+
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('[data-autosave]').checked);
+    await page.locator('[data-autosave]').uncheck();
+    await page.locator('.module-node[data-type="route"] .module-node-label').click();
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE_EDITED'));
+    const originalModuleCode = await page.locator('[data-ai-code]').inputValue();
+    const editedModuleCode = `${originalModuleCode.trimEnd()}\n// MODULE_HISTORY_EDIT\n`;
+    await page.locator('[data-ai-code]').fill(editedModuleCode);
+    await page.locator('[data-panel-switcher]').click();
+    await page.locator('.tree-entry[title="routes"]').click();
+    await page.locator('.tree-entry[title="routes/web.php"]').click();
+    const originalDirectoryCode = await page.locator('[data-file-editor]').inputValue();
+    const editedDirectoryCode = `${originalDirectoryCode.trimEnd()}\n// DIRECTORY_HISTORY_EDIT\n`;
+    await page.locator('[data-file-editor]').fill(editedDirectoryCode);
+    await page.locator('[data-undo]').click();
+    assert.equal(await page.locator('[data-file-editor]').inputValue(), originalDirectoryCode);
+    await page.locator('[data-undo]').click();
+    await page.locator('.studio-panel[data-studio-panel="workflows"]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-ai-code]').inputValue(), editedModuleCode);
+    await page.locator('[data-undo]').click();
+    assert.equal(await page.locator('[data-ai-code]').inputValue(), originalModuleCode);
+    await page.locator('[data-redo]').click();
+    assert.equal(await page.locator('[data-ai-code]').inputValue(), editedModuleCode);
+    await page.locator('[data-redo]').click();
+    await page.locator('.studio-panel[data-studio-panel="directories"]').waitFor({ state: 'visible' });
+    await page.locator('[data-redo]').click();
+    assert.equal(await page.locator('[data-file-editor]').inputValue(), editedDirectoryCode);
+
     await page.locator('.theme-button').click();
     await page.screenshot({ path: join(artifacts, 'inertia-desktop-light.png') });
     assert.ok(firstCode.includes('Schema::create'));
@@ -130,7 +209,7 @@ try {
         await page.locator('[data-ai-settings-close]').click();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'file write', 'save/reload', 'provider failure', 'undo', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
+    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
 } catch (error) {
     console.error(`Browser artifacts: ${artifacts}`);
     if (browser) {

@@ -26,6 +26,10 @@ Http::fake(function ($request) use ($root) {
     $module = collect($context['workflow']['modules'])->firstWhere('id', $context['selected_module_id']);
     $prompt = $module['config']['prompt'];
     if (str_contains($prompt, 'simulate failure')) return Http::response(['error' => 'Test quota reached'], 429);
+    if (str_contains($prompt, 'request tax rules') && empty($context['file_access']['decisions'])) {
+        $request = "```appyhp-file-request\n{\"path\":\"app/Support/TaxRules.php\",\"reason\":\"I need the project tax contract before implementing this module.\"}\n```";
+        return Http::response(FixtureApplication::sse($request, $provider), 200, ['Content-Type' => 'text/event-stream']);
+    }
     $language = 'php';
     $metadata = ['summary' => $prompt, 'config' => new stdClass, 'suggestions' => [], 'table' => null];
     $code = "<?php\n// " . str_replace(["\r", "\n"], ' ', $prompt) . "\nreturn [];\n";

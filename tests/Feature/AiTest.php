@@ -4,6 +4,7 @@ namespace Alliswell\Appyhp\Tests\Feature;
 
 use Alliswell\Appyhp\Support\AiGateway;
 use Alliswell\Appyhp\Support\AiSettings;
+use Alliswell\Appyhp\Support\GenerationFileRequest;
 use Alliswell\Appyhp\Support\GenerationResult;
 use Alliswell\Appyhp\Support\ProjectFiles;
 use Alliswell\Appyhp\Support\WorkflowContext;
@@ -73,6 +74,9 @@ class AiTest extends TestCase
         $this->assertSame('/accounts', $context['workflow']['modules'][0]['config']['uri']);
         $this->assertSame('<?php // latest route draft', $context['workflow']['modules'][0]['draft_code']);
         $this->assertSame('<?php // existing project route', $context['workflow']['modules'][0]['source_file']['content']);
+        $this->assertSame('bidirectional', $context['workflow']['modules'][0]['relationship_to_selected']);
+        $this->assertSame('Return the accounts Inertia page', $context['generation_task']['user_description']);
+        $this->assertSame('AccountController', $context['generation_task']['selected_module']['config']['class']);
         $this->assertTrue($context['workflow']['modules'][2]['connected']);
         $this->assertSame('vue', $context['frontend']);
         $this->assertStringNotContainsString('api_key', json_encode($context));
@@ -165,9 +169,60 @@ class AiTest extends TestCase
             $context = json_decode($request['input'], true);
             $this->assertSame('AccountController', $context['workflow']['modules'][1]['config']['class']);
             $this->assertSame('/accounts', $context['workflow']['modules'][0]['config']['uri']);
+            $this->assertSame('Return the accounts Inertia page', $context['generation_task']['user_description']);
 
             return true;
         });
+    }
+
+    public function test_generation_can_request_an_additional_file_without_creating_a_draft(): void
+    {
+        $this->putJson('/appyhp/api/ai/settings', $this->settings())->assertOk();
+        $request = "```appyhp-file-request\n{\"path\":\"app/Support/TaxRules.php\",\"reason\":\"I need the existing tax contract.\"}\n```";
+        Http::fake(['*' => Http::response(FixtureApplication::sse($request))]);
+
+        $stream = $this->postJson('/appyhp/api/ai/generate', [
+            'moduleId' => 'controller',
+            'workflow' => FixtureApplication::workflow(),
+        ])->assertOk()->streamedContent();
+
+        $this->assertStringContainsString('event: file_request', $stream);
+        $this->assertStringContainsString('app/Support/TaxRules.php', $stream);
+        $this->assertStringNotContainsString('event: done', $stream);
+    }
+
+    public function test_granted_and_denied_file_decisions_are_structured_for_continuation(): void
+    {
+        $this->putJson('/appyhp/api/ai/settings', $this->settings())->assertOk();
+        mkdir(base_path('app/Support'), 0755, true);
+        file_put_contents(base_path('app/Support/TaxRules.php'), '<?php // tax contract');
+        Http::fake(['*' => Http::response(FixtureApplication::sse(FixtureApplication::output()))]);
+
+        $this->postJson('/appyhp/api/ai/generate', [
+            'moduleId' => 'controller',
+            'workflow' => FixtureApplication::workflow(),
+            'fileAccess' => [
+                ['path' => 'app/Support/TaxRules.php', 'decision' => 'grant'],
+                ['path' => 'app/Support/PrivateRules.php', 'decision' => 'deny'],
+            ],
+        ])->assertOk()->streamedContent();
+
+        Http::assertSent(function ($request) {
+            if (! str_ends_with($request->url(), '/responses')) return false;
+            $context = json_decode($request['input'], true);
+            $this->assertSame('granted', $context['file_access']['decisions'][0]['status']);
+            $this->assertSame('<?php // tax contract', $context['file_access']['decisions'][0]['source_file']['content']);
+            $this->assertSame('denied', $context['file_access']['decisions'][1]['status']);
+            $this->assertArrayNotHasKey('source_file', $context['file_access']['decisions'][1]);
+
+            return true;
+        });
+    }
+
+    public function test_file_request_protocol_rejects_surrounding_prose(): void
+    {
+        $this->expectException(RuntimeException::class);
+        GenerationFileRequest::parse("Please approve:\n```appyhp-file-request\n{\"path\":\"app/Test.php\",\"reason\":\"Needed\"}\n```");
     }
 
     public function test_table_metadata_and_code_roundtrip_through_workflow_storage(): void

@@ -154,6 +154,30 @@
             width: 100%;
         }
 
+        .studio-shell.module-editor-active .workflow-editor {
+            border: 0;
+        }
+
+        .studio-shell.module-editor-active .workflow-editor-header,
+        .studio-shell.module-editor-active .workflow-toolbar,
+        .studio-shell.module-editor-active .workflow-canvas-shell {
+            display: none;
+        }
+
+        .studio-shell.module-editor-active .workflow-workspace > .workflow-config-panel.active {
+            border: 0;
+            flex: 1 1 100%;
+            max-width: none;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .studio-shell.module-editor-active .workflow-config-panel .module-config-body {
+            margin: 0 auto;
+            max-width: 1180px;
+            width: 100%;
+        }
+
         .studio-header,
         .studio-sidebar-header {
             align-items: center;
@@ -1760,7 +1784,7 @@
 
                     <div class="header-center">
                         <div class="panel-switcher">
-                            <button type="button" class="history-button" data-undo disabled aria-label="Undo panel change">
+                            <button type="button" class="history-button" data-undo disabled aria-label="Undo last change">
                                 <svg xmlns="http://www.w3.org/2000/svg" height="18px" width="18px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
                                     <path d="M88 256L232 256C241.7 256 250.5 250.2 254.2 241.2C257.9 232.2 255.9 221.9 249 215L202.3 168.3C277.6 109.7 386.6 115 455.8 184.2C530.8 259.2 530.8 380.7 455.8 455.7C380.8 530.7 259.3 530.7 184.3 455.7C174.1 445.5 165.3 434.4 157.9 422.7C148.4 407.8 128.6 403.4 113.7 412.9C98.8 422.4 94.4 442.2 103.9 457.1C113.7 472.7 125.4 487.5 139 501C239 601 401 601 501 501C601 401 601 239 501 139C406.8 44.7 257.3 39.3 156.7 122.8L105 71C98.1 64.2 87.8 62.1 78.8 65.8C69.8 69.5 64 78.3 64 88L64 232C64 245.3 74.7 256 88 256z"/>
                                 </svg>
@@ -1769,7 +1793,7 @@
                                 <span class="panel-switcher-label workflows" data-panel-switcher-label>Workflows</span>
                                 <span class="panel-switcher-thumb"></span>
                             </button>
-                            <button type="button" class="history-button" data-redo disabled aria-label="Redo panel change">
+                            <button type="button" class="history-button" data-redo disabled aria-label="Redo last undone change">
                                 <svg xmlns="http://www.w3.org/2000/svg" height="20px" width="20px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
                                     <path d="M552 256L408 256C398.3 256 389.5 250.2 385.8 241.2C382.1 232.2 384.1 221.9 391 215L437.7 168.3C362.4 109.7 253.4 115 184.2 184.2C109.2 259.2 109.2 380.7 184.2 455.7C259.2 530.7 380.7 530.7 455.7 455.7C463.9 447.5 471.2 438.8 477.6 429.6C487.7 415.1 507.7 411.6 522.2 421.7C536.7 431.8 540.2 451.8 530.1 466.3C521.6 478.5 511.9 490.1 501 501C401 601 238.9 601 139 501C39.1 401 39 239 139 139C233.3 44.7 382.7 39.4 483.3 122.8L535 71C541.9 64.1 552.2 62.1 561.2 65.8C570.2 69.5 576 78.3 576 88L576 232C576 245.3 565.3 256 552 256z"/>
                                 </svg>
@@ -1985,11 +2009,17 @@
             var closeIcon = toggleButton.innerHTML;
             var openIcon = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" width="24px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true"><path d="M535.1 342.6C547.6 330.1 547.6 309.8 535.1 297.3L375.1 137.3C362.6 124.8 342.3 124.8 329.8 137.3C317.3 149.8 317.3 170.1 329.8 182.6L467.2 320L329.9 457.4C317.4 469.9 317.4 490.2 329.9 502.7C342.4 515.2 362.7 515.2 375.2 502.7L535.2 342.7zM183.1 502.6L343.1 342.6C355.6 330.1 355.6 309.8 343.1 297.3L183.1 137.3C170.6 124.8 150.3 124.8 137.8 137.3C125.3 149.8 125.3 170.1 137.8 182.6L275.2 320L137.9 457.4C125.4 469.9 125.4 490.2 137.9 502.7C150.4 515.2 170.7 515.2 183.2 502.7z"/></svg>';
             var sidebarVisible = true;
+            var moduleEditorActive = false;
+            var sidebarVisibleBeforeModuleEditor = true;
             var selectedDirectoryPath = '';
             var selectedFilePath = '';
+            var selectedFileHash = null;
             var selectedLanguage = 'plain';
             var fileDirty = false;
             var fileAutosaveTimer = null;
+            var fileHistory = [];
+            var fileFuture = [];
+            var fileHistoryCurrent = null;
             var directoriesLoaded = false;
             var directoryContainers = {};
             var directoryToggles = {};
@@ -2062,6 +2092,26 @@
                 if (!visible && toggleButton.parentElement !== toggleTarget) {
                     toggleTarget.appendChild(toggleButton);
                 }
+            }
+
+            function enterModuleEditor() {
+                if (moduleEditorActive) return;
+                sidebarVisibleBeforeModuleEditor = sidebarVisible;
+                moduleEditorActive = true;
+                shell.classList.add('module-editor-active');
+                setSidebarVisible(false);
+            }
+
+            function leaveModuleEditorLayout() {
+                if (!moduleEditorActive) return;
+                moduleEditorActive = false;
+                shell.classList.remove('module-editor-active');
+                setSidebarVisible(sidebarVisibleBeforeModuleEditor);
+            }
+
+            function closeModuleEditor() {
+                workflowStore.selectModule(null);
+                leaveModuleEditorLayout();
             }
 
             function setTheme(theme) {
@@ -2342,10 +2392,72 @@
                 });
             }
 
+            var studioHistory = (function () {
+                var domains = {};
+                var sequence = 0;
+                var latestRecord = null;
+                var restoring = false;
+
+                function register(name, domain) {
+                    domains[name] = domain;
+                }
+
+                function record(domain, group) {
+                    if (restoring) return { coalesced: true, sequence: sequence };
+                    var now = Date.now();
+                    var coalesced = Boolean(group && latestRecord && latestRecord.domain === domain
+                        && latestRecord.group === group && now - latestRecord.time < 1500);
+                    if (coalesced) {
+                        latestRecord.time = now;
+                        return { coalesced: true, sequence: latestRecord.sequence };
+                    }
+
+                    Object.keys(domains).forEach(function (name) { domains[name].clearRedo(); });
+                    sequence += 1;
+                    latestRecord = { domain: domain, group: group || '', time: now, sequence: sequence };
+                    return { coalesced: false, sequence: sequence };
+                }
+
+                function candidate(direction) {
+                    var choices = Object.keys(domains).map(function (name) {
+                        return { name: name, sequence: direction === 'undo' ? domains[name].undoSequence() : domains[name].redoSequence() };
+                    }).filter(function (entry) { return Number.isFinite(entry.sequence); });
+                    if (!choices.length) return null;
+                    choices.sort(function (first, second) {
+                        return direction === 'undo' ? second.sequence - first.sequence : first.sequence - second.sequence;
+                    });
+                    return choices[0];
+                }
+
+                function travel(direction) {
+                    var choice = candidate(direction);
+                    if (!choice) return;
+                    restoring = true;
+                    latestRecord = null;
+                    try {
+                        domains[choice.name][direction]();
+                    } finally {
+                        restoring = false;
+                    }
+                    renderHistoryControls();
+                }
+
+                return {
+                    register: register,
+                    record: record,
+                    undo: function () { travel('undo'); },
+                    redo: function () { travel('redo'); },
+                    canUndo: function () { return candidate('undo') !== null; },
+                    canRedo: function () { return candidate('redo') !== null; },
+                    resetGrouping: function () { latestRecord = null; }
+                };
+            })();
+
             function createAppyhpStore() {
                 var state = {
                     activePanel: 'workflows',
                     autosave: false,
+                    sidebarVisible: true,
                     saving: false,
                     dirty: false,
                     canUndo: false,
@@ -2371,6 +2483,26 @@
                     return panelLabels[panelName] ? panelName : 'workflows';
                 }
 
+                function historySnapshot() {
+                    return { activePanel: state.activePanel, autosave: state.autosave, sidebarVisible: state.sidebarVisible };
+                }
+
+                function recordHistory(group) {
+                    var record = studioHistory.record('setup', group);
+                    if (record.coalesced) return;
+                    history.push({ state: historySnapshot(), sequence: record.sequence });
+                    if (history.length > 50) history.shift();
+                }
+
+                function applyHistorySnapshot(snapshot) {
+                    state.activePanel = normalizePanel(snapshot.activePanel);
+                    state.autosave = Boolean(snapshot.autosave);
+                    state.sidebarVisible = snapshot.sidebarVisible !== false;
+                    state.dirty = true;
+                    notify();
+                    save();
+                }
+
                 function applyPanel(panelName, options) {
                     var nextPanel = normalizePanel(panelName);
                     var shouldRecord = !options || options.record !== false;
@@ -2381,8 +2513,7 @@
                     }
 
                     if (shouldRecord) {
-                        history.push(state.activePanel);
-                        future = [];
+                        recordHistory('panel');
                     }
 
                     state.activePanel = nextPanel;
@@ -2400,10 +2531,12 @@
 
                     return postJson(setupUrl(), {
                         activePanel: state.activePanel,
-                        autosave: state.autosave
+                        autosave: state.autosave,
+                        sidebarVisible: state.sidebarVisible
                     }, 'PUT').then(function (setup) {
                         state.activePanel = normalizePanel(setup.activePanel);
                         state.autosave = Boolean(setup.autosave);
+                        state.sidebarVisible = setup.sidebarVisible !== false;
                         state.dirty = false;
                         return snapshot();
                     }).finally(function () {
@@ -2417,19 +2550,33 @@
                         .then(function (setup) {
                             state.activePanel = normalizePanel(setup.activePanel);
                             state.autosave = Boolean(setup.autosave);
+                            state.sidebarVisible = setup.sidebarVisible !== false;
                             state.dirty = false;
                             notify();
                         })
                         .catch(function () {
                             state.activePanel = 'workflows';
                             state.autosave = false;
+                            state.sidebarVisible = window.innerWidth > 760;
                             state.dirty = false;
                             notify();
                         });
                 }
 
                 function setAutosave(enabled) {
+                    if (state.autosave === Boolean(enabled)) return;
+                    recordHistory('autosave');
                     state.autosave = Boolean(enabled);
+                    state.dirty = true;
+                    notify();
+                    save();
+                }
+
+                function setSidebarPreference(visible) {
+                    visible = Boolean(visible);
+                    if (state.sidebarVisible === visible) return;
+                    recordHistory('sidebar');
+                    state.sidebarVisible = visible;
                     state.dirty = true;
                     notify();
                     save();
@@ -2440,11 +2587,9 @@
                         return;
                     }
 
-                    future.push(state.activePanel);
-                    state.activePanel = normalizePanel(history.pop());
-                    state.dirty = true;
-                    notify();
-                    save();
+                    var previous = history.pop();
+                    future.push({ state: historySnapshot(), sequence: previous.sequence });
+                    applyHistorySnapshot(previous.state);
                 }
 
                 function redo() {
@@ -2452,12 +2597,14 @@
                         return;
                     }
 
-                    history.push(state.activePanel);
-                    state.activePanel = normalizePanel(future.pop());
-                    state.dirty = true;
-                    notify();
-                    save();
+                    var next = future.pop();
+                    history.push({ state: historySnapshot(), sequence: next.sequence });
+                    applyHistorySnapshot(next.state);
                 }
+
+                function clearRedo() { future = []; }
+                function undoSequence() { return history.length ? history[history.length - 1].sequence : null; }
+                function redoSequence() { return future.length ? future[future.length - 1].sequence : null; }
 
                 function subscribe(subscriber) {
                     subscribers.push(subscriber);
@@ -2470,16 +2617,22 @@
                     };
                 }
 
-                return {
+                var api = {
                     getState: snapshot,
                     load: load,
                     save: save,
                     setActivePanel: applyPanel,
                     setAutosave: setAutosave,
+                    setSidebarVisible: setSidebarPreference,
                     undo: undo,
                     redo: redo,
-                    subscribe: subscribe
+                    subscribe: subscribe,
+                    clearRedo: clearRedo,
+                    undoSequence: undoSequence,
+                    redoSequence: redoSequence
                 };
+                studioHistory.register('setup', api);
+                return api;
             }
 
             var appyhpStore = createAppyhpStore();
@@ -2529,7 +2682,7 @@
                     label: 'UI',
                     items: [
                         { type: 'inertia-page', label: 'Inertia Page' },
-                        { type: 'inertia-middleware', label: 'Inertia Shared Data' },
+                        { type: 'inertia-middleware', label: 'Inertia Middleware' },
                         { type: 'view', label: 'View' },
                         { type: 'component', label: 'Component' },
                         { type: 'auth', label: 'Auth' },
@@ -2553,8 +2706,8 @@
                     ]
                 },
                 'inertia-middleware': {
-                    title: 'Inertia Shared Data',
-                    description: 'Shared authentication, flash messages and Inertia middleware.',
+                    title: 'Inertia Middleware',
+                    description: 'Shares global Inertia data such as the authenticated user, flash messages, and asset versions.',
                     defaults: { class: 'HandleInertiaRequests', rootView: 'app', shared: 'auth.user, flash.success, flash.error' },
                     fields: [
                         { key: 'class', label: 'Class', type: 'text' },
@@ -2848,7 +3001,9 @@
                         return {
                             id: String(module.id || createId('mod')),
                             type: String(module.type || 'service'),
-                            label: String(module.label || definition.title || 'Module'),
+                            label: String(module.type === 'inertia-middleware' && module.label === 'Inertia Shared Data'
+                                ? definition.title
+                                : (module.label || definition.title || 'Module')),
                             description: String(module.description || definition.description || ''),
                             x: Number.isFinite(Number(module.x)) ? Number(module.x) : 80 + moduleIndex * 180,
                             y: Number.isFinite(Number(module.y)) ? Number(module.y) : 120,
@@ -2922,7 +3077,8 @@
                 }
 
                 function recordHistory(group) {
-                    if (group && historyGroup === group && Date.now() - historyGroupTime < 1500) {
+                    var record = studioHistory.record('workflow', group);
+                    if (record.coalesced) {
                         historyGroupTime = Date.now();
                         return;
                     }
@@ -2931,7 +3087,8 @@
                     history.push({
                         workflows: cloneWorkflowValue(state.workflows),
                         selectedWorkflowId: state.selectedWorkflowId,
-                        selectedModuleId: state.selectedModuleId
+                        selectedModuleId: state.selectedModuleId,
+                        sequence: record.sequence
                     });
                     if (history.length > 50) {
                         history.shift();
@@ -2939,12 +3096,12 @@
                     future = [];
                 }
 
-                function markDirty() {
+                function markDirty(options) {
                     revision += 1;
                     state.dirty = true;
                     notify();
 
-                    if (appyhpStore.getState().autosave) {
+                    if (appyhpStore.getState().autosave && (!options || !options.skipAutosave)) {
                         scheduleAutosave();
                     }
                 }
@@ -2963,7 +3120,9 @@
                 function updateActiveWorkflow(mutator, options) {
                     var changed = false;
                     var workflowId = (options && options.workflowId) || state.selectedWorkflowId;
-                    recordHistory(options && options.historyGroup);
+                    if (!options || !options.skipHistory) {
+                        recordHistory(options && options.historyGroup);
+                    }
                     state.workflows = state.workflows.map(function (workflow) {
                         if (workflow.id !== workflowId) {
                             return workflow;
@@ -2978,11 +3137,11 @@
                     });
 
                     if (!changed) {
-                        history.pop();
+                        if (!options || !options.skipHistory) history.pop();
                         return;
                     }
 
-                    markDirty();
+                    markDirty(options);
                 }
 
                 function load() {
@@ -3481,7 +3640,8 @@
                         selectedModuleId: state.selectedModuleId
                     });
                     var previous = history.pop();
-                    state.workflows = previous.workflows;
+                    future[future.length - 1].sequence = previous.sequence;
+                    state.workflows = prepareHistoryRestore(previous.workflows, state.workflows);
                     state.selectedWorkflowId = previous.selectedWorkflowId;
                     state.selectedModuleId = previous.selectedModuleId;
                     state.connectingFrom = null;
@@ -3495,19 +3655,41 @@
                     }
 
                     historyGroup = null;
+                    var next = future.pop();
                     history.push({
                         workflows: cloneWorkflowValue(state.workflows),
                         selectedWorkflowId: state.selectedWorkflowId,
-                        selectedModuleId: state.selectedModuleId
+                        selectedModuleId: state.selectedModuleId,
+                        sequence: next.sequence
                     });
-                    var next = future.pop();
-                    state.workflows = next.workflows;
+                    state.workflows = prepareHistoryRestore(next.workflows, state.workflows);
                     state.selectedWorkflowId = next.selectedWorkflowId;
                     state.selectedModuleId = next.selectedModuleId;
                     state.connectingFrom = null;
                     state.edgeSettingsId = null;
                     markDirty();
                 }
+
+                function prepareHistoryRestore(targetWorkflows, currentWorkflows) {
+                    var restored = cloneWorkflowValue(targetWorkflows);
+                    restored.forEach(function (workflow) {
+                        var currentWorkflow = currentWorkflows.find(function (entry) { return entry.id === workflow.id; });
+                        if (!currentWorkflow) return;
+                        workflow.modules.forEach(function (module) {
+                            var currentModule = currentWorkflow.modules.find(function (entry) { return entry.id === module.id; });
+                            var targetAi = module.config && module.config.ai;
+                            var currentAi = currentModule && currentModule.config && currentModule.config.ai;
+                            if (!targetAi || !currentAi || targetAi.path !== currentAi.path || targetAi.code === currentAi.code) return;
+                            targetAi.dirty = true;
+                            targetAi.baseHash = currentAi.baseHash == null ? targetAi.baseHash : currentAi.baseHash;
+                        });
+                    });
+                    return restored;
+                }
+
+                function clearRedo() { future = []; }
+                function undoSequence() { return history.length ? history[history.length - 1].sequence : null; }
+                function redoSequence() { return future.length ? future[future.length - 1].sequence : null; }
 
                 function setZoom(zoom) {
                     state.zoom = Math.min(2, Math.max(0.4, Number(zoom) || 1));
@@ -3525,7 +3707,7 @@
                     };
                 }
 
-                return {
+                var api = {
                     getState: snapshot,
                     getActiveWorkflow: selectedWorkflow,
                     getSelectedModule: selectedModule,
@@ -3553,8 +3735,13 @@
                     redo: redo,
                     setZoom: setZoom,
                     clearPendingFocus: clearPendingFocus,
-                    subscribe: subscribe
+                    subscribe: subscribe,
+                    clearRedo: clearRedo,
+                    undoSequence: undoSequence,
+                    redoSequence: redoSequence
                 };
+                studioHistory.register('workflow', api);
+                return api;
             }
 
             var workflowStore = createLaravelWorkflowStore();
@@ -3611,6 +3798,9 @@
             }
 
             function renderWorkflowState(state) {
+                if (moduleEditorActive && !state.selectedModuleId) {
+                    leaveModuleEditorLayout();
+                }
                 renderWorkflowList(state);
                 renderWorkflowEditor(state);
                 manualSaveButton.disabled = appyhpStore.getState().saving || state.saving;
@@ -3959,6 +4149,7 @@
             }
 
             function openModuleConfig(moduleId) {
+                enterModuleEditor();
                 workflowStore.selectModule(moduleId);
             }
 
@@ -4116,7 +4307,8 @@
                         if (current.type === 'route' && field.key === 'routeType') {
                             patch.config.folder = 'routes';
                             patch.config.filename = after.filename;
-                            patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
+                            patch.config.previousPath = '';
+                            patch.config.ai = null;
                         }
                         if (['class', 'path', 'page', 'name'].includes(field.key)) {
                             if (current.config.folder === before.folder) patch.config.folder = after.folder;
@@ -4288,19 +4480,17 @@
             }
 
             function renderHistoryControls() {
-                var setupState = appyhpStore.getState();
-                var workflowState = workflowStore.getState();
-                var useWorkflowHistory = setupState.activePanel === 'workflows';
-
-                undoButton.disabled = useWorkflowHistory ? !workflowState.canUndo : !setupState.canUndo;
-                redoButton.disabled = useWorkflowHistory ? !workflowState.canRedo : !setupState.canRedo;
-                undoButton.setAttribute('aria-label', useWorkflowHistory ? 'Undo workflow change' : 'Undo panel change');
-                redoButton.setAttribute('aria-label', useWorkflowHistory ? 'Redo workflow change' : 'Redo panel change');
+                undoButton.disabled = !studioHistory.canUndo();
+                redoButton.disabled = !studioHistory.canRedo();
+                undoButton.setAttribute('aria-label', 'Undo last change');
+                redoButton.setAttribute('aria-label', 'Redo last undone change');
             }
 
             function renderSetupState(state) {
+                if (moduleEditorActive && state.activePanel !== 'workflows') closeModuleEditor();
                 setPanel(state.activePanel);
                 autosaveInput.checked = state.autosave;
+                if (!moduleEditorActive) setSidebarVisible(state.sidebarVisible);
                 manualSaveButton.disabled = state.saving || workflowStore.getState().saving;
                 saveLabel.textContent = manualSaveButton.disabled ? 'Saving...' : 'Save';
                 renderHistoryControls();
@@ -4576,6 +4766,93 @@
                 });
             }
 
+            function captureFileHistorySnapshot() {
+                var relatedModules = [];
+                workflowStore.getState().workflows.forEach(function (workflow) {
+                    workflow.modules.forEach(function (module) {
+                        var config = module.config || {};
+                        var path = [config.folder, config.filename].filter(Boolean).join('/');
+                        if (path !== selectedFilePath) return;
+                        relatedModules.push({
+                            workflowId: workflow.id,
+                            moduleId: module.id,
+                            ai: cloneWorkflowValue(config.ai || null)
+                        });
+                    });
+                });
+                return {
+                    path: selectedFilePath,
+                    name: editorName.value,
+                    content: fileEditor.value,
+                    hash: selectedFileHash,
+                    relatedModules: relatedModules
+                };
+            }
+
+            function recordFileHistory(group) {
+                if (!selectedFilePath || !fileHistoryCurrent) return;
+                var record = studioHistory.record('file', group);
+                if (!record.coalesced) {
+                    fileHistory.push(Object.assign({}, fileHistoryCurrent, { sequence: record.sequence }));
+                    if (fileHistory.length > 50) fileHistory.shift();
+                }
+                renderHistoryControls();
+            }
+
+            function restoreFileHistorySnapshot(snapshot) {
+                selectedFilePath = snapshot.path;
+                selectedFileHash = snapshot.hash || null;
+                selectedLanguage = detectLanguage(snapshot.path);
+                editorPath.textContent = snapshot.path;
+                editorName.value = snapshot.name;
+                editorName.disabled = false;
+                fileEditor.value = snapshot.content;
+                fileEditor.disabled = false;
+                selectFile(snapshot.path);
+                fileDirty = true;
+                updateCodeEditor();
+                (snapshot.relatedModules || []).forEach(function (entry) {
+                    workflowStore.updateModule(entry.moduleId, {
+                        config: { ai: cloneWorkflowValue(entry.ai) }
+                    }, { workflowId: entry.workflowId, skipHistory: true, skipAutosave: true });
+                });
+                fileHistoryCurrent = captureFileHistorySnapshot();
+                updateManualSaveState();
+                setEditorStatus('Unsaved change');
+                if (appyhpStore.getState().autosave) scheduleFileAutosave();
+            }
+
+            function undoFileHistory() {
+                if (!fileHistory.length) return;
+                var previous = fileHistory.pop();
+                fileFuture.push(Object.assign({}, captureFileHistorySnapshot(), { sequence: previous.sequence }));
+                restoreFileHistorySnapshot(previous);
+            }
+
+            function redoFileHistory() {
+                if (!fileFuture.length) return;
+                var next = fileFuture.pop();
+                fileHistory.push(Object.assign({}, captureFileHistorySnapshot(), { sequence: next.sequence }));
+                restoreFileHistorySnapshot(next);
+            }
+
+            function rebaseFileHistoryPaths(oldPath, newPath) {
+                if (!oldPath || oldPath === newPath) return;
+                fileHistory.concat(fileFuture).forEach(function (snapshot) {
+                    if (snapshot.path === oldPath) snapshot.path = newPath;
+                });
+                if (fileHistoryCurrent && fileHistoryCurrent.path === oldPath) fileHistoryCurrent.path = newPath;
+            }
+
+            var fileHistoryDomain = {
+                undo: undoFileHistory,
+                redo: redoFileHistory,
+                clearRedo: function () { fileFuture = []; },
+                undoSequence: function () { return fileHistory.length ? fileHistory[fileHistory.length - 1].sequence : null; },
+                redoSequence: function () { return fileFuture.length ? fileFuture[fileFuture.length - 1].sequence : null; }
+            };
+            studioHistory.register('file', fileHistoryDomain);
+
             function openFile(path) {
                 setEditorStatus('Loading');
                 selectFile(path);
@@ -4583,6 +4860,7 @@
                 requestJson(directoryUrl('/file', { path: path }))
                     .then(function (payload) {
                         selectedFilePath = payload.path;
+                        selectedFileHash = payload.hash || null;
                         selectedLanguage = detectLanguage(payload.path);
                         editorPath.textContent = payload.path;
                         editorName.value = payload.name || path.split('/').pop();
@@ -4591,6 +4869,8 @@
                         fileEditor.disabled = false;
                         updateCodeEditor();
                         fileDirty = false;
+                        fileHistoryCurrent = captureFileHistorySnapshot();
+                        studioHistory.resetGrouping();
                         updateManualSaveState();
                         setEditorStatus('');
                     })
@@ -4617,6 +4897,7 @@
                     editorPath.textContent = selectedFilePath;
                     editorName.value = selectedFilePath.split('/').pop();
                     if (oldPath !== selectedFilePath) {
+                        rebaseFileHistoryPaths(oldPath, selectedFilePath);
                         selectFile(selectedFilePath);
                         loadDirectory(parentPathOf(oldPath));
                     }
@@ -4624,10 +4905,16 @@
                         path: selectedFilePath,
                         content: fileEditor.value
                     }, 'PUT');
-                }).then(function () {
+                }).then(function (payload) {
+                    selectedFileHash = payload.hash || selectedFileHash;
                     fileDirty = false;
+                    markEditedFileSaved();
+                    fileHistoryCurrent = captureFileHistorySnapshot();
                     updateManualSaveState();
                     setEditorStatus('Saved');
+                    if (appyhpStore.getState().autosave && workflowStore.getState().dirty) {
+                        workflowStore.save().catch(function () {});
+                    }
                 }).catch(function (error) {
                     setEditorStatus(error.message);
                 });
@@ -4649,10 +4936,12 @@
                     return;
                 }
 
+                recordFileHistory('content:' + selectedFilePath);
                 fileDirty = true;
                 updateCodeEditor();
                 updateManualSaveState();
                 syncEditedFileToModules();
+                fileHistoryCurrent = captureFileHistorySnapshot();
 
                 if (appyhpStore.getState().autosave) {
                     scheduleFileAutosave();
@@ -4667,8 +4956,33 @@
                     var path = [config.folder, config.filename].filter(Boolean).join('/');
                     if (path !== selectedFilePath || (config.ai && config.ai.code === fileEditor.value)) return;
                     workflowStore.updateModule(module.id, {
-                        config: { ai: Object.assign({}, config.ai || {}, { code: fileEditor.value, path: path, editedAt: new Date().toISOString() }) }
-                    }, { historyGroup: 'file:' + selectedFilePath });
+                        config: { ai: Object.assign({}, config.ai || {}, {
+                            code: fileEditor.value,
+                            path: path,
+                            baseHash: config.ai && config.ai.baseHash != null ? config.ai.baseHash : selectedFileHash,
+                            source: 'file',
+                            dirty: true,
+                            editedAt: new Date().toISOString()
+                        }) }
+                    }, { skipHistory: true, skipAutosave: true });
+                });
+            }
+
+            function markEditedFileSaved() {
+                var workflow = workflowStore.getActiveWorkflow();
+                if (!workflow) return;
+                workflow.modules.forEach(function (module) {
+                    var config = module.config || {};
+                    var path = [config.folder, config.filename].filter(Boolean).join('/');
+                    var ai = config.ai || {};
+                    if (path !== selectedFilePath || ai.path !== path || ai.code !== fileEditor.value || ai.dirty !== true) return;
+                    workflowStore.updateModule(module.id, {
+                        config: { ai: Object.assign({}, ai, {
+                            baseHash: selectedFileHash,
+                            dirty: false,
+                            writtenAt: new Date().toISOString()
+                        }) }
+                    }, { skipHistory: true });
                 });
             }
 
@@ -4752,7 +5066,11 @@
             }
 
             toggleButton.addEventListener('click', function () {
-                setSidebarVisible(!sidebarVisible);
+                if (moduleEditorActive) {
+                    closeModuleEditor();
+                    return;
+                }
+                appyhpStore.setSidebarVisible(!sidebarVisible);
             });
 
             manualSaveButton.addEventListener('click', function () {
@@ -4768,26 +5086,20 @@
 
             autosaveInput.addEventListener('change', function () {
                 appyhpStore.setAutosave(autosaveInput.checked);
+                if (!autosaveInput.checked) return;
+                if (fileDirty) scheduleFileAutosave();
+                if (workflowStore.getState().dirty) workflowStore.save().catch(function () {});
             });
 
             undoButton.addEventListener('click', function () {
-                if (appyhpStore.getState().activePanel === 'workflows') {
-                    workflowStore.undo();
-                    return;
-                }
-
-                appyhpStore.undo();
+                studioHistory.undo();
             });
             redoButton.addEventListener('click', function () {
-                if (appyhpStore.getState().activePanel === 'workflows') {
-                    workflowStore.redo();
-                    return;
-                }
-
-                appyhpStore.redo();
+                studioHistory.redo();
             });
 
             panelSwitcher.addEventListener('click', function () {
+                if (moduleEditorActive) closeModuleEditor();
                 appyhpStore.setActivePanel(
                     appyhpStore.getState().activePanel === 'workflows' ? 'directories' : 'workflows'
                 );
@@ -4875,6 +5187,8 @@
             fileEditor.addEventListener('input', handleFileInput);
             editorName.addEventListener('input', function () {
                 if (!selectedFilePath) return;
+                recordFileHistory('name:' + selectedFilePath);
+                fileHistoryCurrent = captureFileHistorySnapshot();
                 fileDirty = true;
                 updateManualSaveState();
                 if (appyhpStore.getState().autosave) scheduleFileAutosave();

@@ -33,6 +33,7 @@ class SetupController
         if (isset($setup['activePanel']) && ! in_array($setup['activePanel'], $this->allowedPanels, true)) {
             $setup['activePanel'] = 'workflows';
         }
+        $setup['sidebarVisible'] = filter_var($setup['sidebarVisible'] ?? true, FILTER_VALIDATE_BOOL);
 
         $this->writeSetup($setup);
 
@@ -67,6 +68,7 @@ class SetupController
         if (! in_array($setup['activePanel'], $this->allowedPanels, true)) {
             $setup['activePanel'] = 'workflows';
         }
+        $setup['sidebarVisible'] = filter_var($setup['sidebarVisible'] ?? true, FILTER_VALIDATE_BOOL);
 
         return $setup;
     }
@@ -93,6 +95,7 @@ class SetupController
         return [
             'activePanel' => 'workflows',
             'autosave' => false,
+            'sidebarVisible' => true,
         ];
     }
 

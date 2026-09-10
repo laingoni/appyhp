@@ -17,7 +17,13 @@
     }
 
     .workflow-config-panel .module-config-header { flex: 0 0 auto; gap: 8px; }
+    .workflow-config-panel .module-config-header { justify-content: flex-start; }
     .module-config-header > span { min-width: 0; overflow-wrap: anywhere; }
+    .module-editor-back { align-items: center; background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 3px; color: inherit; cursor: pointer; display: inline-flex; flex: 0 0 auto; font-size: 12px; gap: 5px; min-height: 30px; padding: 3px 9px; }
+    .module-editor-back > span[aria-hidden="true"] { font-size: 22px; line-height: 1; }
+    .module-editor-back:hover { background: #f1f5f9; }
+    .dark .module-editor-back { background: var(--dark-canvas); border-color: var(--dark-line); }
+    .dark .module-editor-back:hover { background: #1f2937; }
     .workflow-config-panel .module-config-body { min-width: 0; gap: 12px; padding: 12px; }
     .module-config-field { min-width: 0; }
     .module-config-field input, .module-config-field textarea, .module-config-field select { width: 100%; }
@@ -35,6 +41,12 @@
     .dark .ai-status[data-error="true"] { color: #fda4af; }
     .ai-status[data-stale="true"] { color: #94640b; }
     .dark .ai-status[data-stale="true"] { color: #fcd34d; }
+    .ai-file-request { background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.35); border-radius: 5px; display: grid; gap: 7px; padding: 10px; }
+    .ai-file-request[hidden] { display: none; }
+    .ai-file-request strong, .ai-file-request p { font-size: 12px; margin: 0; overflow-wrap: anywhere; }
+    .ai-file-request code { background: rgba(15, 23, 42, 0.08); border-radius: 3px; font-size: 11px; overflow-wrap: anywhere; padding: 5px 7px; }
+    .dark .ai-file-request { background: rgba(14, 165, 233, 0.12); border-color: rgba(56, 189, 248, 0.42); }
+    .dark .ai-file-request code { background: rgba(2, 6, 23, 0.42); }
     .ai-live { align-items: center; display: inline-flex; font-size: 12px; gap: 6px; }
     .ai-live input { accent-color: #0d9477; height: 14px; margin: 0; width: 14px; }
     .ai-code { background: var(--console-light); border: 1px solid var(--light-line); border-radius: 3px; color: inherit; display: block; margin: 0; max-height: 330px; min-height: 160px; overflow: auto; padding: 10px; resize: vertical; tab-size: 4; width: 100%; }

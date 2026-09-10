@@ -26,7 +26,7 @@ class FixtureApplication
             ->withMiddleware()
             ->withExceptions()
             ->create();
-        $app->afterBootstrapping(LoadConfiguration::class, function ($app): void {
+        $app->afterBootstrapping(LoadConfiguration::class, function ($app) use ($root): void {
             $app['config']->set([
                 'app.env' => 'testing',
                 'app.debug' => true,
