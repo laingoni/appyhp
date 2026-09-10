@@ -454,6 +454,13 @@
             padding: 0.4rem 0.55rem;
         }
 
+        .workflow-services-actions {
+            align-items: center;
+            display: inline-flex;
+            gap: 0.3rem;
+            margin-left: auto;
+        }
+
         .dark .workflow-services-header,
         .dark .workflow-editor-header,
         .dark .workflow-toolbar,
@@ -951,6 +958,11 @@
             filter: brightness(1.25);
         }
 
+        .workflow-edge-layer path {
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
         .edge-settings-popover {
             background: rgba(15, 23, 42, 0.96);
             border: 1px solid #475569;
@@ -1091,6 +1103,12 @@
             display: flex;
             justify-content: space-between;
             padding: 0.55rem 0.7rem;
+        }
+
+        .workflow-json-actions {
+            align-items: center;
+            display: flex;
+            gap: 0.4rem;
         }
 
         .workflow-json-card pre {
@@ -1691,10 +1709,16 @@
                                         <span class="workflow-title">Services</span>
                                         <span class="workflow-meta">Laravel workflow configurations</span>
                                     </span>
-                                    <button type="button" class="workflow-action" data-workflow-new>
-                                        <span aria-hidden="true">+</span>
-                                        <span>New</span>
-                                    </button>
+                                    <span class="workflow-services-actions">
+                                        <input type="file" data-workflow-upload accept=".json,application/json" hidden>
+                                        <button type="button" class="workflow-action icon-only" data-workflow-upload-button aria-label="Upload workflow" title="Upload workflow">
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+                                        </button>
+                                        <button type="button" class="workflow-action" data-workflow-new>
+                                            <span aria-hidden="true">+</span>
+                                            <span>New</span>
+                                        </button>
+                                    </span>
                                 </header>
                                 <div class="workflow-list" data-workflow-list></div>
                                 <div class="directory-status" data-workflow-status></div>
@@ -1859,9 +1883,31 @@
         <div class="workflow-json-card" role="dialog" aria-modal="true" aria-label="Workflow JSON">
             <header>
                 <strong data-workflow-json-title>Workflow JSON</strong>
-                <button type="button" class="workflow-action" data-workflow-json-close>Close</button>
+                <div class="workflow-json-actions">
+                    <button type="button" class="workflow-action" data-workflow-json-download>Download</button>
+                    <button type="button" class="workflow-action" data-workflow-json-close>Close</button>
+                </div>
             </header>
             <pre data-workflow-json-output>{}</pre>
+        </div>
+    </div>
+
+    <div class="studio-modal" data-workflow-settings-modal aria-hidden="true">
+        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="workflow-settings-title">
+            <div class="studio-modal-header"><strong id="workflow-settings-title">Service settings</strong><button type="button" class="workflow-action" data-workflow-settings-close>Close</button></div>
+            <div class="studio-modal-body">
+                <div class="module-config-field"><label for="workflow-settings-name">Workflow name</label><input type="text" id="workflow-settings-name" data-workflow-settings-name maxlength="200" autocomplete="off"></div>
+                <div class="module-config-field"><label for="workflow-settings-description">Description</label><textarea id="workflow-settings-description" data-workflow-settings-description maxlength="2000"></textarea></div>
+            </div>
+            <div class="studio-modal-actions"><span class="editor-status" data-workflow-settings-status></span><button type="button" class="workflow-action" data-workflow-settings-cancel>Cancel</button><button type="button" class="workflow-action ai-primary" data-workflow-settings-save>Save settings</button></div>
+        </div>
+    </div>
+
+    <div class="studio-modal" data-workflow-delete-modal aria-hidden="true">
+        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="workflow-delete-title">
+            <div class="studio-modal-header"><strong id="workflow-delete-title">Delete service</strong><button type="button" class="workflow-action" data-workflow-delete-close>Close</button></div>
+            <div class="studio-modal-body"><p data-workflow-delete-message>Are you sure you want to delete this service?</p></div>
+            <div class="studio-modal-actions"><button type="button" class="workflow-action" data-workflow-delete-cancel>Cancel</button><button type="button" class="workflow-action directory-delete-action" data-workflow-delete-confirm>Delete service</button></div>
         </div>
     </div>
 
@@ -1952,6 +1998,8 @@
             var workflowList = shell.querySelector('[data-workflow-list]');
             var workflowStatus = shell.querySelector('[data-workflow-status]');
             var workflowNewButton = shell.querySelector('[data-workflow-new]');
+            var workflowUploadButton = shell.querySelector('[data-workflow-upload-button]');
+            var workflowUploadInput = shell.querySelector('[data-workflow-upload]');
             var workflowAutoButton = shell.querySelector('[data-workflow-auto]');
             var modulePalette = shell.querySelector('[data-module-palette]');
             var moduleScrollLeftButton = shell.querySelector('[data-module-scroll-left]');
@@ -1973,6 +2021,13 @@
             var workflowJsonTitle = document.querySelector('[data-workflow-json-title]');
             var workflowJsonOutput = document.querySelector('[data-workflow-json-output]');
             var workflowJsonClose = document.querySelector('[data-workflow-json-close]');
+            var workflowJsonDownload = document.querySelector('[data-workflow-json-download]');
+            var workflowSettingsModal = document.querySelector('[data-workflow-settings-modal]');
+            var workflowSettingsName = document.querySelector('[data-workflow-settings-name]');
+            var workflowSettingsDescription = document.querySelector('[data-workflow-settings-description]');
+            var workflowSettingsStatus = document.querySelector('[data-workflow-settings-status]');
+            var workflowDeleteModal = document.querySelector('[data-workflow-delete-modal]');
+            var workflowDeleteMessage = document.querySelector('[data-workflow-delete-message]');
             var directoryContextMenu = document.querySelector('[data-directory-context-menu]');
             var directoryContextTitle = document.querySelector('[data-directory-context-title]');
             var directoryContextCreate = document.querySelector('[data-directory-context-create]');
@@ -2510,7 +2565,7 @@
                 route: {
                     title: 'Route',
                     description: 'HTTP route entry point.',
-                    defaults: { method: 'GET', uri: '/', middleware: 'web', name: '', action: 'index' },
+                    defaults: { routeType: 'web', method: 'GET', uri: '/', middleware: 'web', name: '', action: 'index' },
                     fields: [
                         { key: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
                         { key: 'uri', label: 'URI', type: 'text' },
@@ -2785,6 +2840,11 @@
                         var definition = moduleDefinition(module.type || 'service');
                         var config = Object.assign({}, definition.defaults || {}, module.config || {});
                         config = Object.assign({}, defaultModuleTarget(module.type, config, (wf.meta || {}).frontend), config);
+                        if (module.type === 'route') {
+                            config.routeType = ['web', 'api', 'console', 'channels'].includes(config.routeType) ? config.routeType : 'web';
+                            config.folder = 'routes';
+                            config.filename = defaultModuleTarget('route', config, (wf.meta || {}).frontend).filename;
+                        }
                         return {
                             id: String(module.id || createId('mod')),
                             type: String(module.type || 'service'),
@@ -3021,6 +3081,18 @@
                     markDirty();
                 }
 
+                function importWorkflow(workflow) {
+                    recordHistory();
+                    state.workflows.push(normalizeWorkflow(workflow, state.workflows.length));
+                    state.selectedWorkflowId = state.workflows[state.workflows.length - 1].id;
+                    state.selectedModuleId = null;
+                    state.connectingFrom = null;
+                    state.edgeSettingsId = null;
+                    state.pendingFocusModuleId = null;
+                    markDirty();
+                    return save().catch(function () {});
+                }
+
                 function deleteWorkflow(id) {
                     if (!id) {
                         return;
@@ -3030,7 +3102,21 @@
                         return entry.id === id;
                     });
 
-                    if (!workflow || !window.confirm('Delete "' + workflow.name + '"?')) {
+                    if (!workflow) {
+                        return;
+                    }
+
+                    openWorkflowDeleteModal(workflow);
+                }
+
+                function confirmDeleteWorkflow() {
+                    var id = workflowDeleteModal.dataset.workflowId;
+                    var workflow = state.workflows.find(function (entry) {
+                        return entry.id === id;
+                    });
+
+                    if (!workflow) {
+                        closeStudioModal(workflowDeleteModal);
                         return;
                     }
 
@@ -3044,6 +3130,7 @@
                     state.edgeSettingsId = null;
                     state.pendingFocusModuleId = null;
                     markDirty();
+                    closeStudioModal(workflowDeleteModal);
                 }
 
                 function renameWorkflow(id) {
@@ -3055,13 +3142,23 @@
                         return;
                     }
 
-                    var name = window.prompt('Workflow name', workflow.name);
-                    if (name === null) {
-                        return;
-                    }
+                    workflowSettingsModal.dataset.workflowId = id;
+                    workflowSettingsName.value = workflow.name || '';
+                    workflowSettingsDescription.value = workflow.description || '';
+                    workflowSettingsStatus.textContent = '';
+                    workflowSettingsModal.classList.add('active');
+                    workflowSettingsModal.setAttribute('aria-hidden', 'false');
+                    window.setTimeout(function () { workflowSettingsName.focus(); workflowSettingsName.select(); }, 0);
+                }
 
-                    var description = window.prompt('Workflow description', workflow.description || '');
-                    if (description === null) {
+                function saveWorkflowSettings() {
+                    var id = workflowSettingsModal.dataset.workflowId;
+                    var workflow = state.workflows.find(function (entry) {
+                        return entry.id === id;
+                    });
+
+                    if (!workflow) {
+                        closeStudioModal(workflowSettingsModal);
                         return;
                     }
 
@@ -3072,12 +3169,13 @@
                         }
 
                         return normalizeWorkflow(Object.assign({}, entry, {
-                            name: name.trim() || entry.name,
-                            description: description.trim() || 'Laravel application workflow',
+                            name: workflowSettingsName.value.trim() || entry.name,
+                            description: workflowSettingsDescription.value.trim() || 'Laravel application workflow',
                             meta: Object.assign({}, entry.meta || {}, { updatedAt: new Date().toISOString() })
                         }), 0);
                     });
                     markDirty();
+                    closeStudioModal(workflowSettingsModal);
                 }
 
                 function selectWorkflow(id) {
@@ -3434,8 +3532,11 @@
                     load: load,
                     save: save,
                     createWorkflow: createWorkflow,
+                    importWorkflow: importWorkflow,
                     deleteWorkflow: deleteWorkflow,
+                    confirmDeleteWorkflow: confirmDeleteWorkflow,
                     renameWorkflow: renameWorkflow,
+                    saveWorkflowSettings: saveWorkflowSettings,
                     selectWorkflow: selectWorkflow,
                     selectModule: selectModule,
                     addModule: addModule,
@@ -3679,6 +3780,7 @@
                     var c2 = moduleCenter(to, positions);
                     var midX = (c1.x + c2.x) / 2;
                     var midY = (c1.y + c2.y) / 2;
+                    var controlGap = 15;
                     var pathD = edge.type === 'stiff'
                         ? 'M ' + c1.x + ' ' + c1.y + ' L ' + c2.x + ' ' + c2.y
                         : 'M ' + c1.x + ' ' + c1.y + ' C ' + midX + ' ' + c1.y + ', ' + midX + ' ' + c2.y + ', ' + c2.x + ' ' + c2.y;
@@ -3707,9 +3809,9 @@
                     group.appendChild(label);
 
                     gear.setAttribute('class', 'edge-control');
-                    gear.setAttribute('cx', midX - 18);
-                    gear.setAttribute('cy', midY + 6);
-                    gear.setAttribute('r', '9');
+                    gear.setAttribute('cx', midX - controlGap);
+                    gear.setAttribute('cy', midY);
+                    gear.setAttribute('r', '10');
                     gear.setAttribute('fill', 'rgba(15,23,42,0.94)');
                     gear.setAttribute('stroke', color);
                     gear.addEventListener('click', function () {
@@ -3717,19 +3819,19 @@
                     });
                     group.appendChild(gear);
 
-                    gearText.setAttribute('x', midX - 18);
-                    gearText.setAttribute('y', midY + 9);
+                    gearText.setAttribute('x', midX - controlGap);
+                    gearText.setAttribute('y', midY + 4);
                     gearText.setAttribute('fill', color);
-                    gearText.setAttribute('font-size', '9');
+                    gearText.setAttribute('font-size', '11');
                     gearText.setAttribute('text-anchor', 'middle');
                     gearText.style.pointerEvents = 'none';
-                    gearText.textContent = '*';
+                    gearText.textContent = '⚙';
                     group.appendChild(gearText);
 
                     deleteCircle.setAttribute('class', 'edge-control');
-                    deleteCircle.setAttribute('cx', midX + 18);
-                    deleteCircle.setAttribute('cy', midY + 6);
-                    deleteCircle.setAttribute('r', '9');
+                    deleteCircle.setAttribute('cx', midX + controlGap);
+                    deleteCircle.setAttribute('cy', midY);
+                    deleteCircle.setAttribute('r', '10');
                     deleteCircle.setAttribute('fill', 'rgba(15,23,42,0.94)');
                     deleteCircle.setAttribute('stroke', color);
                     deleteCircle.addEventListener('click', function () {
@@ -3737,8 +3839,8 @@
                     });
                     group.appendChild(deleteCircle);
 
-                    deleteText.setAttribute('x', midX + 18);
-                    deleteText.setAttribute('y', midY + 9);
+                    deleteText.setAttribute('x', midX + controlGap);
+                    deleteText.setAttribute('y', midY + 4);
                     deleteText.setAttribute('fill', color);
                     deleteText.setAttribute('font-size', '11');
                     deleteText.setAttribute('text-anchor', 'middle');
@@ -4011,6 +4113,11 @@
                         }
                         var before = defaultModuleTarget(current.type, current.config, workflowFrontend());
                         var after = defaultModuleTarget(current.type, Object.assign({}, current.config, patch.config), workflowFrontend());
+                        if (current.type === 'route' && field.key === 'routeType') {
+                            patch.config.folder = 'routes';
+                            patch.config.filename = after.filename;
+                            patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
+                        }
                         if (['class', 'path', 'page', 'name'].includes(field.key)) {
                             if (current.config.folder === before.folder) patch.config.folder = after.folder;
                             if (current.config.filename === before.filename) {
@@ -4084,8 +4191,95 @@
             function openWorkflowJson(workflow) {
                 workflowJsonTitle.textContent = workflow.name + ' JSON';
                 workflowJsonOutput.textContent = JSON.stringify(workflow, null, 2);
+                workflowJsonModal.dataset.workflowId = workflow.id;
                 workflowJsonModal.classList.add('active');
                 workflowJsonModal.setAttribute('aria-hidden', 'false');
+            }
+
+            function openWorkflowDeleteModal(workflow) {
+                workflowDeleteModal.dataset.workflowId = workflow.id;
+                workflowDeleteMessage.textContent = 'Delete “' + workflow.name + '”? This removes the service from AppyHP workflows.';
+                workflowDeleteModal.classList.add('active');
+                workflowDeleteModal.setAttribute('aria-hidden', 'false');
+            }
+
+            function downloadWorkflowJson() {
+                var workflowId = workflowJsonModal.dataset.workflowId;
+                var workflow = workflowStore.getState().workflows.find(function (entry) {
+                    return entry.id === workflowId;
+                });
+                if (!workflow) return;
+
+                var filename = (workflow.name || 'workflow').trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'workflow';
+                var blob = new Blob([JSON.stringify(workflow, null, 2)], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = filename + '.json';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            }
+
+            function importedWorkflowName(filename, workflows) {
+                var base = filename.replace(/\.json$/i, '').trim() || 'Imported workflow';
+                var candidate = base;
+                var number = 2;
+                while (workflows.some(function (workflow) { return workflow.name.toLowerCase() === candidate.toLowerCase(); })) {
+                    candidate = base + ' ' + number;
+                    number += 1;
+                }
+                return candidate;
+            }
+
+            function importWorkflowJson(contents, filename) {
+                var imported = JSON.parse(contents);
+                if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
+                    throw new Error('The uploaded JSON must contain one workflow object.');
+                }
+
+                var state = workflowStore.getState();
+                var ids = {};
+                var workflow = normalizeWorkflow(imported, state.workflows.length);
+                workflow.id = createId('wf');
+                workflow.name = importedWorkflowName(filename, state.workflows);
+                workflow.modules = workflow.modules.map(function (module) {
+                    var oldId = module.id;
+                    var newId = createId('mod');
+                    ids[oldId] = newId;
+                    return Object.assign({}, module, { id: newId });
+                });
+                workflow.edges = workflow.edges.map(function (edge) {
+                    return Object.assign({}, edge, {
+                        id: createId('edge'),
+                        from: ids[edge.from] || edge.from,
+                        to: ids[edge.to] || edge.to
+                    });
+                });
+                workflow.meta = Object.assign({}, workflow.meta, { importedAt: new Date().toISOString() });
+
+                workflowStore.importWorkflow(workflow);
+            }
+
+            function handleWorkflowUpload(event) {
+                var input = event.target;
+                var file = input.files && input.files[0];
+                input.value = '';
+                if (!file) return;
+
+                var reader = new FileReader();
+                reader.onload = function () {
+                    try {
+                        importWorkflowJson(String(reader.result || ''), file.name);
+                    } catch (error) {
+                        setWorkflowStatus('Could not import workflow: ' + error.message);
+                    }
+                };
+                reader.onerror = function () {
+                    setWorkflowStatus('Could not read the workflow file.');
+                };
+                reader.readAsText(file);
             }
 
             function closeWorkflowJson() {
@@ -4600,6 +4794,8 @@
             });
 
             workflowNewButton.addEventListener('click', workflowStore.createWorkflow);
+            workflowUploadButton.addEventListener('click', function () { workflowUploadInput.click(); });
+            workflowUploadInput.addEventListener('change', handleWorkflowUpload);
             shell.querySelector('[data-workflow-frontend]').addEventListener('change', function (event) {
                 workflowStore.setFrontend(event.target.value);
                 queueModuleGeneration();
@@ -4612,6 +4808,7 @@
                 scrollModulePalette(1);
             });
             workflowJsonClose.addEventListener('click', closeWorkflowJson);
+            workflowJsonDownload.addEventListener('click', downloadWorkflowJson);
             workflowJsonModal.addEventListener('click', function (event) {
                 if (event.target === workflowJsonModal) {
                     closeWorkflowJson();
@@ -4685,6 +4882,12 @@
             editorInfoButton.addEventListener('click', openFileInfo);
             fileInfoAiButton.addEventListener('click', askAiAboutFile);
             editorNotesButton.addEventListener('click', openFileNotes);
+            document.querySelector('[data-workflow-settings-close]').addEventListener('click', function () { closeStudioModal(workflowSettingsModal); });
+            document.querySelector('[data-workflow-settings-cancel]').addEventListener('click', function () { closeStudioModal(workflowSettingsModal); });
+            document.querySelector('[data-workflow-settings-save]').addEventListener('click', workflowStore.saveWorkflowSettings);
+            document.querySelector('[data-workflow-delete-close]').addEventListener('click', function () { closeStudioModal(workflowDeleteModal); });
+            document.querySelector('[data-workflow-delete-cancel]').addEventListener('click', function () { closeStudioModal(workflowDeleteModal); });
+            document.querySelector('[data-workflow-delete-confirm]').addEventListener('click', workflowStore.confirmDeleteWorkflow);
             document.querySelector('[data-file-info-close]').addEventListener('click', function () { closeStudioModal(fileInfoModal); });
             document.querySelector('[data-file-notes-close]').addEventListener('click', function () { closeStudioModal(fileNotesModal); });
             document.querySelector('[data-file-notes-save]').addEventListener('click', function () {
@@ -4697,7 +4900,7 @@
                     .then(function () { fileNotesStatus.textContent = 'Notes saved.'; })
                     .catch(function (error) { fileNotesStatus.textContent = error.message; });
             });
-            [fileInfoModal, fileNotesModal].forEach(function (modal) {
+            [workflowSettingsModal, workflowDeleteModal, fileInfoModal, fileNotesModal].forEach(function (modal) {
                 modal.addEventListener('click', function (event) {
                     if (event.target === modal) closeStudioModal(modal);
                 });

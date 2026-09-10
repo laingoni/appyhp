@@ -72,7 +72,10 @@ function defaultModuleTarget(type, config, frontend) {
     };
     var folder = folders[type] || 'app/Services';
     var filename = String(config.class || 'Module').split('\\').pop() + '.php';
-    if (type === 'route') filename = 'web.php';
+    if (type === 'route') {
+        var routeTypes = { web: 'web.php', api: 'api.php', console: 'console.php', channels: 'channels.php' };
+        filename = routeTypes[config.routeType] || routeTypes.web;
+    }
     if (['auth', 'queue', 'cache', 'storage'].includes(type)) filename = (type === 'storage' ? 'filesystems' : type) + '.php';
     if (type === 'table' || type === 'migration') {
         var stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '').replace(/^(\d{4})(\d{2})(\d{2})(\d{6})$/, '$1_$2_$3_$4');
@@ -87,7 +90,7 @@ function defaultModuleTarget(type, config, frontend) {
         var framework = config.framework && config.framework !== 'inherit' ? config.framework : (frontend || aiProject.frontend || 'vue');
         filename = leaf + (type === 'view' ? '.blade.php' : '.' + inertiaExtension(framework, config.language));
     }
-    return { folder: folder, filename: filename, prompt: '', live: true };
+    return { folder: folder, filename: filename, prompt: '', live: false };
 }
 
 function workflowFingerprint(workflow) {
@@ -98,7 +101,7 @@ function workflowFingerprint(workflow) {
             var config = Object.assign({}, module.config);
             delete config.ai;
             delete config.live;
-            return { id: module.id, type: module.type, label: module.label, description: module.description, config: config, code: (module.config.ai || {}).code || '' };
+            return { id: module.id, type: module.type, label: module.label, description: module.description, config: config };
         }),
         edges: workflow.edges.map(function (edge) { return { from: edge.from, to: edge.to, label: edge.label }; })
     });
@@ -175,7 +178,7 @@ function refreshKeyPlaceholder() {
 
 function openAiSettings() {
     cancelAiGeneration();
-    var values = aiSettings || { provider: 'openai', base_url: aiProviderDefaults.openai, model: '', live: true, debounce_ms: 1200 };
+    var values = aiSettings || { provider: 'openai', base_url: aiProviderDefaults.openai, model: '', live: false, debounce_ms: 1200 };
     aiForm.elements.provider.value = values.provider;
     aiForm.elements.base_url.value = values.base_url;
     aiForm.elements.model.value = values.model;
@@ -216,6 +219,24 @@ aiForm.addEventListener('submit', function (event) {
         settingsStatus(error.message, true);
     }).finally(function () { aiForm.querySelector('fieldset').disabled = false; });
 });
+
+function saveAiLivePreference(enabled) {
+    if (!aiSettings) return Promise.reject(new Error('AI settings are not loaded.'));
+
+    return postJson(aiUrl('settings'), {
+        provider: aiSettings.provider,
+        base_url: aiSettings.base_url,
+        model: aiSettings.model,
+        api_key: '',
+        live: Boolean(enabled),
+        debounce_ms: Number(aiSettings.debounce_ms || 1200)
+    }, 'PUT').then(function (response) {
+        aiSettings = response.settings;
+        aiSettingsButton.title = aiSettings.configured ? 'AI settings: ' + aiSettings.model : 'AI settings';
+        return aiSettings;
+    });
+}
+
 aiForm.querySelector('[data-ai-test]').addEventListener('click', function () {
     if (!aiForm.reportValidity()) return;
     var payload = settingsPayload();
@@ -375,19 +396,23 @@ function renderAiModuleConfig(state) {
     if (!moduleConfigPanel.firstChild) {
         var definition = moduleDefinition(module.type);
         moduleConfigPanel.innerHTML = '<header class="module-config-header"><span><span class="workflow-title" data-ai-module-title></span><span class="workflow-meta" data-ai-module-kind></span></span><button type="button" class="ai-close" data-ai-close aria-label="Close module configuration" title="Close">&times;</button></header>' +
+            '<details class="ai-section"><summary>Laravel configuration</summary><div class="ai-fields" data-ai-fields></div></details>' +
+            '<div data-ai-route-type></div>' +
             '<div class="module-config-body"><div data-ai-name></div><div class="ai-target-fields" data-ai-target></div><div data-ai-prompt></div>' +
             '<div class="ai-toolbar"><label class="ai-live"><input type="checkbox" data-ai-live>Live</label><button class="workflow-action" type="button" data-ai-stop hidden>Stop</button><button class="workflow-action ai-primary" type="button" data-ai-generate>Generate</button><button class="workflow-action" type="button" data-ai-setup>AI settings</button></div>' +
             '<p class="ai-status" role="status" aria-live="polite" data-ai-message></p>' +
             '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Generated code</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button></div>' +
-            '<pre class="ai-code" tabindex="0" aria-label="Generated code"><code data-ai-code></code></pre>' +
+            '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Generated code" placeholder="Write or generate code for this module..."></textarea>' +
             '<section class="ai-section" data-ai-table hidden></section>' +
             '<div class="ai-toolbar"><span class="ai-status" data-ai-path></span><button class="workflow-action ai-primary" type="button" data-ai-write>Write file</button></div>' +
             '<p class="ai-status" data-ai-summary></p>' +
             '<section class="ai-section" data-ai-suggestions hidden></section>' +
-            '<section class="ai-section"><h3 class="ai-section-title">Connections</h3><div class="ai-connections" data-ai-connections></div></section>' +
-            '<details class="ai-section"><summary>Laravel configuration</summary><div class="ai-fields" data-ai-fields></div></details></div>';
+            '<section class="ai-section"><h3 class="ai-section-title">Connections</h3><div class="ai-connections" data-ai-connections></div></section></div>';
         moduleConfigPanel.querySelector('[data-ai-module-kind]').textContent = definition.title;
         addConfigField(moduleConfigPanel.querySelector('[data-ai-name]'), module, { key: 'label', label: 'Module name', type: 'text', root: true });
+        if (module.type === 'route') {
+            addConfigField(moduleConfigPanel.querySelector('[data-ai-route-type]'), module, { key: 'routeType', label: 'Route file', type: 'select', options: ['web', 'api', 'console', 'channels'] });
+        }
         var folder = addConfigField(moduleConfigPanel.querySelector('[data-ai-target]'), module, { key: 'folder', label: 'Folder', type: 'text' });
         folder.setAttribute('list', 'ai-folder-options');
         folder.autocomplete = 'off';
@@ -395,7 +420,11 @@ function renderAiModuleConfig(state) {
         var datalist = document.createElement('datalist');
         datalist.id = 'ai-folder-options';
         folder.parentElement.appendChild(datalist);
-        addConfigField(moduleConfigPanel.querySelector('[data-ai-target]'), module, { key: 'filename', label: 'Filename', type: 'text' });
+        var filename = addConfigField(moduleConfigPanel.querySelector('[data-ai-target]'), module, { key: 'filename', label: 'Filename', type: 'text' });
+        if (module.type === 'route') {
+            filename.readOnly = true;
+            filename.title = 'The route file is determined by Route file.';
+        }
         var prompt = addConfigField(moduleConfigPanel.querySelector('[data-ai-prompt]'), module, { key: 'prompt', label: 'What should this module do?', type: 'textarea' });
         prompt.maxLength = 16000;
         var fields = moduleConfigPanel.querySelector('[data-ai-fields]');
@@ -409,9 +438,18 @@ function renderAiModuleConfig(state) {
             renderModuleConfig(workflowStore.getState());
         });
         moduleConfigPanel.querySelector('[data-ai-live]').addEventListener('change', function (event) {
+            var enabled = event.target.checked;
             if (!event.target.checked) cancelAiGeneration('Live generation paused.');
-            workflowStore.updateModule(module.id, { config: { live: event.target.checked } });
-            if (event.target.checked) queueModuleGeneration();
+            workflowStore.updateModule(module.id, { config: { live: enabled } });
+            saveAiLivePreference(enabled).then(function () {
+                renderModuleConfig(workflowStore.getState());
+                if (enabled) queueModuleGeneration();
+            }).catch(function (error) {
+                event.target.checked = false;
+                workflowStore.updateModule(module.id, { config: { live: false } });
+                aiFeedback = { message: error.message || 'Unable to save the Live setting.', error: true };
+                renderModuleConfig(workflowStore.getState());
+            });
         });
         moduleConfigPanel.querySelector('[data-ai-copy]').addEventListener('click', async function () {
             try {
@@ -419,6 +457,18 @@ function renderAiModuleConfig(state) {
                 aiFeedback = { message: 'Code copied.', error: false };
             } catch (error) { aiFeedback = { message: 'Clipboard is unavailable. Download the code instead.', error: true }; }
             renderModuleConfig(workflowStore.getState());
+        });
+        moduleConfigPanel.querySelector('[data-ai-code]').addEventListener('input', function (event) {
+            var current = workflowStore.getSelectedModule();
+            if (!current || current.id !== module.id) return;
+            if (aiPreview || aiJob) cancelAiGeneration('Code draft edited manually.');
+            var code = event.target.value;
+            var ai = Object.assign({}, current.config.ai || {}, {
+                code: code,
+                path: [current.config.folder, current.config.filename].filter(Boolean).join('/'),
+                editedAt: new Date().toISOString()
+            });
+            workflowStore.updateModule(module.id, { config: { ai: ai } }, { historyGroup: module.id + ':code' });
         });
         moduleConfigPanel.querySelector('[data-ai-download]').addEventListener('click', function () {
             var selected = workflowStore.getSelectedModule();
@@ -442,9 +492,9 @@ function renderAiModuleConfig(state) {
     var folderOptions = Array.from(new Set(aiProject.folders.concat([module.config.folder])));
     moduleConfigPanel.querySelector('#ai-folder-options').innerHTML = folderOptions.map(function (folder) { return '<option value="' + escapeHtml(folder) + '"></option>'; }).join('');
     var live = moduleConfigPanel.querySelector('[data-ai-live]');
-    live.checked = module.config.live !== false;
-    live.disabled = !aiSettings || !aiSettings.live;
-    live.title = live.disabled ? 'Enable live generation in AI settings' : 'Live generation';
+    live.checked = module.config.live === true;
+    live.disabled = !aiSettings;
+    live.title = live.disabled ? 'AI settings are still loading' : 'Live generation';
     renderAiOutput(module, workflow);
     renderAiConnections(module, workflow);
 }
@@ -458,13 +508,13 @@ function renderAiOutput(module, workflow) {
     if (!module || !workflow || !moduleConfigPanel.firstChild) return;
     var result = module.config.ai || {};
     var code = displayedAiCode();
-    var stale = Boolean(result.code && result.contextHash !== workflowFingerprint(workflow));
+    var stale = Boolean(result.code && result.contextHash && result.contextHash !== workflowFingerprint(workflow));
     var path = module.config.folder + '/' + module.config.filename;
     var codeEl = moduleConfigPanel.querySelector('[data-ai-code]');
     if (codeEl.dataset.source !== code) {
         var frame = codeEl.parentElement;
         var follow = frame.scrollHeight - frame.scrollTop - frame.clientHeight < 35;
-        codeEl.innerHTML = code ? highlightCode(code, detectLanguage(path)) : 'No generated code.';
+        codeEl.value = code;
         codeEl.dataset.source = code;
         if (follow && aiJob) frame.scrollTop = frame.scrollHeight;
     }
@@ -564,7 +614,7 @@ async function writeGeneratedFile() {
     var module = workflowStore.getSelectedModule();
     if (!module || !module.config.ai || aiWriting || aiJob) return;
     var result = cloneWorkflowValue(module.config.ai);
-    if (result.contextHash !== workflowFingerprint(workflow)) return;
+    if (result.contextHash && result.contextHash !== workflowFingerprint(workflow)) return;
     var workflowId = workflow.id;
     var moduleId = module.id;
     aiWriting = true;

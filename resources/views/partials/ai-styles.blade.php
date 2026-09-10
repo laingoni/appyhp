@@ -37,7 +37,7 @@
     .dark .ai-status[data-stale="true"] { color: #fcd34d; }
     .ai-live { align-items: center; display: inline-flex; font-size: 12px; gap: 6px; }
     .ai-live input { accent-color: #0d9477; height: 14px; margin: 0; width: 14px; }
-    .ai-code { background: var(--console-light); border: 1px solid var(--light-line); border-radius: 3px; margin: 0; max-height: 330px; min-height: 160px; overflow: auto; padding: 10px; tab-size: 4; }
+    .ai-code { background: var(--console-light); border: 1px solid var(--light-line); border-radius: 3px; color: inherit; display: block; margin: 0; max-height: 330px; min-height: 160px; overflow: auto; padding: 10px; resize: vertical; tab-size: 4; width: 100%; }
     .dark .ai-code { background: var(--console-dark); border-color: var(--dark-line); }
     .ai-code, .ai-code * { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; font-size: 12px; line-height: 1.6; }
     .ai-section { border-top: 1px solid var(--light-line); min-width: 0; padding-top: 10px; }
@@ -45,6 +45,16 @@
     .ai-section-title { font-size: 12px; font-weight: 700; margin: 0 0 8px; overflow-wrap: anywhere; }
     .ai-section summary { cursor: pointer; font-size: 12px; font-weight: 700; }
     .ai-fields { display: grid; gap: 10px; padding-top: 10px; }
+    .workflow-config-panel details.ai-section { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 5px; flex: 0 0 auto; margin: 10px 12px 0; overflow: hidden; padding: 0; }
+    .workflow-config-panel details.ai-section summary { list-style: none; padding: 10px 12px; }
+    .workflow-config-panel details.ai-section summary::-webkit-details-marker { display: none; }
+    .workflow-config-panel details.ai-section summary::before { content: '▸'; display: inline-block; margin-right: 7px; transition: transform .15s ease; }
+    .workflow-config-panel details.ai-section[open] summary { border-bottom: 1px solid var(--light-line); }
+    .workflow-config-panel details.ai-section[open] summary::before { transform: rotate(90deg); }
+    .workflow-config-panel details.ai-section > .ai-fields { padding: 10px 12px 12px; }
+    .dark .workflow-config-panel details.ai-section { background: var(--dark-canvas); border-color: var(--dark-line); }
+    .dark .workflow-config-panel details.ai-section[open] summary { border-bottom-color: var(--dark-line); }
+    .workflow-config-panel [data-ai-route-type] { flex: 0 0 auto; margin: 10px 12px 0; }
     .ai-connections { display: grid; gap: 5px; }
     .ai-connection { background: transparent; border: 0; color: inherit; cursor: pointer; font: inherit; font-size: 12px; padding: 5px 0; text-align: left; overflow-wrap: anywhere; }
     .ai-connection:hover { color: #0d9477; text-decoration: underline; }

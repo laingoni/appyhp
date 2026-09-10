@@ -10,7 +10,7 @@ return [
         'base_url' => env('APPY_AI_BASE_URL', 'https://api.openai.com/v1'),
         'model' => env('APPY_AI_MODEL', ''),
         'api_key' => env('APPY_AI_KEY', ''),
-        'live' => true,
+        'live' => false,
         'debounce_ms' => 1200,
         'timeout' => 120,
         'max_output_tokens' => 8192,

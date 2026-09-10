@@ -3,10 +3,10 @@
         <button type="button" class="love-close" data-love-close aria-label="Close support message" title="Close">&times;</button>
         <div class="love-mark" aria-hidden="true">❤</div>
         <h2 id="love-title">We love that you are creating on AppyHP</h2>
-        <p class="love-intro">Donations support AppyHP’s ongoing maintenance and development. You can help by contributing on GitHub or buying us a coffee.</p>
+        <p class="love-intro">Your support helps us maintain AppyHP, improve its features, fix issues, create better documentation, and continue developing tools that make Laravel development clearer and more productive.</p>
         <div class="love-links">
             <a href="https://github.com/laingoni/appyhp" target="_blank" rel="noopener noreferrer">Contribute on GitHub <span class="love-external-icon" aria-hidden="true">↗</span></a>
-            <a href="https://www.buymeacoffee.com/" target="_blank" rel="noopener noreferrer">Buy us a coffee <span class="love-external-icon" aria-hidden="true">↗</span></a>
+            <a href="https://buymeacoffee.com/appyhp" target="_blank" rel="noopener noreferrer">Buy us a coffee <span class="love-external-icon" aria-hidden="true">↗</span></a>
         </div>
         <div class="love-wallets" aria-label="Crypto addresses">
             <div class="love-wallet"><span class="love-wallet-label">Bitcoin</span><code>bc1qszp7w32pqqsz6arqhydlhvaxzn7fd2yzfcnag7</code><button type="button" class="love-copy" data-love-copy="bc1qszp7w32pqqsz6arqhydlhvaxzn7fd2yzfcnag7">Copy</button></div>

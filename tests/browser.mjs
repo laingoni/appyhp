@@ -45,13 +45,13 @@ try {
     await page.locator('.module-node[data-type="table"] .module-node-label').click();
     const prompt = page.getByLabel('What should this module do?', { exact: true });
     await prompt.fill('Create customers with name and unique email.');
-    await page.locator('[data-ai-code]').filter({ hasText: 'Schema::create' }).waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Schema::create'));
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     assert.equal(await page.locator('[data-ai-table] tbody tr').count(), 3);
     assert.equal(await prompt.inputValue(), 'Create customers with name and unique email.');
     assert.equal(await page.locator('[data-ai-write]').isEnabled(), true);
     await page.screenshot({ path: join(artifacts, 'table-desktop-dark.png') });
-    const firstCode = await page.locator('[data-ai-code]').textContent();
+    const firstCode = await page.locator('[data-ai-code]').inputValue();
 
     await prompt.fill('slow create users with status');
     await page.getByText('Streaming code', { exact: true }).waitFor();
@@ -59,7 +59,7 @@ try {
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     assert.equal(await prompt.inputValue(), 'Create users with status and unique email.');
     assert.equal(await page.locator('[data-ai-table] tbody tr').count(), 4);
-    assert.match(await page.locator('[data-ai-code]').textContent(), /status/);
+    assert.match(await page.locator('[data-ai-code]').inputValue(), /status/);
 
     await page.locator('[data-autosave]').check();
     await page.locator('[data-manual-save]').click();
@@ -79,7 +79,7 @@ try {
     await prompt.fill('simulate failure');
     await page.locator('[data-ai-message][data-error="true"]').waitFor();
     assert.match(await page.locator('[data-ai-message]').textContent(), /rate limit or quota/);
-    assert.match(await page.locator('[data-ai-code]').textContent(), /status/);
+    assert.match(await page.locator('[data-ai-code]').inputValue(), /status/);
     assert.equal(await page.locator('[data-ai-write]').isEnabled(), false);
     await page.locator('[data-undo]').click();
     assert.equal(await prompt.inputValue(), 'Create users with status and unique email.');
@@ -107,7 +107,7 @@ try {
         await page.getByLabel('Framework', { exact: true }).selectOption(framework);
         await page.getByText('Draft ready.', { exact: true }).waitFor();
         assert.ok((await page.getByLabel('Filename', { exact: true }).inputValue()).endsWith(`.${extension}`));
-        assert.ok((await page.locator('[data-ai-code]').textContent()).includes(adapter));
+        assert.ok((await page.locator('[data-ai-code]').inputValue()).includes(adapter));
     }
     await page.locator('.theme-button').click();
     await page.screenshot({ path: join(artifacts, 'inertia-desktop-light.png') });
