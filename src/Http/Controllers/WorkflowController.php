@@ -87,7 +87,46 @@ class WorkflowController
             ];
         }
 
-        return $normalized;
+        return $this->synchronizeModulesByFile($normalized);
+    }
+
+    /**
+     * Modules that address the same file represent the same editable artifact.
+     * Keep their semantic attributes aligned while preserving canvas identity.
+     *
+     * @param array<int, array<string, mixed>> $workflows
+     * @return array<int, array<string, mixed>>
+     */
+    private function synchronizeModulesByFile(array $workflows): array
+    {
+        $canonicalByPath = [];
+
+        foreach ($workflows as &$workflow) {
+            foreach ($workflow['modules'] as &$module) {
+                $config = $module['config'] ?? [];
+                $path = trim(implode('/', array_filter([
+                    $config['folder'] ?? null,
+                    $config['filename'] ?? null,
+                ], fn ($part) => is_string($part) && $part !== '')), '/');
+
+                if ($path === '') {
+                    continue;
+                }
+
+                if (! isset($canonicalByPath[$path])) {
+                    $canonicalByPath[$path] = $module;
+                    continue;
+                }
+
+                $identity = array_intersect_key($module, array_flip(['id', 'type', 'x', 'y']));
+                $module = array_replace($module, $canonicalByPath[$path], $identity);
+                unset($module['config']['previousPath']);
+            }
+            unset($module);
+        }
+        unset($workflow);
+
+        return $workflows;
     }
 
     /**

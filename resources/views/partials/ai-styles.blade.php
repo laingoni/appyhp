@@ -24,10 +24,16 @@
     .module-editor-back:hover { background: #f1f5f9; }
     .dark .module-editor-back { background: var(--dark-canvas); border-color: var(--dark-line); }
     .dark .module-editor-back:hover { background: #1f2937; }
+    .studio-docs-link, .studio-docs-link:hover, .studio-docs-link:focus-visible { text-decoration: none; }
     .module-file-editor-view { display: flex; flex: 1 1 auto; flex-direction: column; height: 100%; min-height: 0; }
-    .module-file-editor-textarea { border: 0; border-radius: 0; flex: 1 1 auto; margin: 0; max-height: none; min-height: 0; resize: none; }
+    .module-embedded-editor-shell { flex: 1 1 auto; min-height: 0; }
+    .module-embedded-editor-shell .file-editor { opacity: 1; }
+    .module-embedded-editor-shell:focus-within { box-shadow: inset 0 0 0 1px rgba(13, 148, 119, .55); }
     .module-file-editor-footer { align-items: center; border-top: 1px solid var(--light-line); display: flex; flex: 0 0 auto; gap: 10px; justify-content: space-between; min-height: 48px; padding: 8px 12px; }
     .dark .module-file-editor-footer { border-top-color: var(--dark-line); }
+    .ai-prompt-field-header { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+    .ai-prompt-field-header label { min-width: 0; }
+    .ai-prompt-editor-button { flex: 0 0 auto; }
     .workflow-config-panel .module-config-body { min-width: 0; gap: 12px; padding: 12px; }
     .module-config-field { min-width: 0; }
     .module-config-field input, .module-config-field textarea, .module-config-field select { width: 100%; }

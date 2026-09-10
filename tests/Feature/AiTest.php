@@ -20,7 +20,24 @@ class AiTest extends TestCase
 {
     public function test_studio_loads_without_database_session_or_cache_tables(): void
     {
-        $this->get('/appyhp/studio')->assertOk()->assertSee('data-ai-settings', false)->assertSee('What should this module do?', false);
+        $this->get('/appyhp/studio')
+            ->assertOk()
+            ->assertSee('data-ai-settings', false)
+            ->assertSee('What should this module do?', false)
+            ->assertSee('data-ai-edit-file', false)
+            ->assertSee('Code editor', false)
+            ->assertSee('data-ai-edit-prompt', false)
+            ->assertSee('Text Editor', false)
+            ->assertSee('data-module-file-editor', false)
+            ->assertSee('data-module-file-editor-shell', false)
+            ->assertSee('data-module-file-back', false)
+            ->assertSee('data-module-text-editor', false)
+            ->assertSee('data-module-text-editor-shell', false)
+            ->assertSee('data-module-text-back', false)
+            ->assertSee('data-module-editor-highlight', false)
+            ->assertSee('data-module-editor-gutter', false)
+            ->assertSee('href="/appyhp/studio/web/index.html"', false)
+            ->assertSee('Docs ↗', false);
         $this->getJson('/appyhp/api/ai/settings')->assertOk()->assertJsonPath('settings.configured', false);
         $this->assertSame('database', config('session.driver'));
         $this->assertSame('database', config('cache.default'));
@@ -246,6 +263,56 @@ class AiTest extends TestCase
         $workflow['modules'][0]['config']['ai']['code'] = $code;
         $workflow['modules'][0]['config']['name'] = '';
         $this->putJson('/appyhp/api/workflows', ['workflows' => [$workflow]])->assertOk()->assertJsonPath('workflows.0.modules.0.config.ai.code', $code)->assertJsonPath('workflows.0.modules.0.config.name', '');
+    }
+
+    public function test_modules_targeting_the_same_file_share_semantic_attributes(): void
+    {
+        $first = FixtureApplication::workflow();
+        $first['modules'][0]['label'] = 'Shared web routes';
+        $first['modules'][0]['description'] = 'The canonical routes/web.php module.';
+        $first['modules'][0]['config'] = array_replace($first['modules'][0]['config'], [
+            'folder' => 'routes',
+            'filename' => 'web.php',
+            'routeType' => 'web',
+            'method' => 'POST',
+            'uri' => '/shared',
+            'prompt' => 'Describe every route in this file.',
+            'ai' => ['path' => 'routes/web.php', 'code' => '<?php // shared'],
+        ]);
+
+        $second = $first;
+        $second['id'] = 'wf_second';
+        $second['modules'] = [[
+            'id' => 'route_second',
+            'type' => 'route',
+            'label' => 'Outdated label',
+            'description' => 'Outdated description',
+            'x' => 730,
+            'y' => 410,
+            'config' => [
+                'folder' => 'routes',
+                'filename' => 'web.php',
+                'routeType' => 'web',
+                'method' => 'GET',
+                'uri' => '/outdated',
+                'prompt' => 'Outdated notes',
+                'previousPath' => 'routes/api.php',
+            ],
+        ]];
+        $second['edges'] = [];
+
+        $this->putJson('/appyhp/api/workflows', ['workflows' => [$first, $second]])
+            ->assertOk()
+            ->assertJsonPath('workflows.1.modules.0.id', 'route_second')
+            ->assertJsonPath('workflows.1.modules.0.x', 730)
+            ->assertJsonPath('workflows.1.modules.0.y', 410)
+            ->assertJsonPath('workflows.1.modules.0.label', 'Shared web routes')
+            ->assertJsonPath('workflows.1.modules.0.description', 'The canonical routes/web.php module.')
+            ->assertJsonPath('workflows.1.modules.0.config.method', 'POST')
+            ->assertJsonPath('workflows.1.modules.0.config.uri', '/shared')
+            ->assertJsonPath('workflows.1.modules.0.config.prompt', 'Describe every route in this file.')
+            ->assertJsonPath('workflows.1.modules.0.config.ai.code', '<?php // shared')
+            ->assertJsonMissingPath('workflows.1.modules.0.config.previousPath');
     }
 
     public function test_malformed_generation_does_not_become_a_valid_draft(): void

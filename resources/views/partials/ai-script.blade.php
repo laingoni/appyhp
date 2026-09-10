@@ -9,6 +9,7 @@ var aiWriting = false;
 var aiSourceLoads = {};
 var aiPendingFileRequest = null;
 var aiFileEditorActive = null;
+var aiTextEditorActive = null;
 var loveModal = document.querySelector('[data-love-modal]');
 var loveCard = loveModal.querySelector('.love-card');
 var loveCopyStatus = loveModal.querySelector('[data-love-copy-status]');
@@ -114,41 +115,49 @@ function workflowFingerprint(workflow) {
 }
 
 async function publishGeneratedFiles(workflows) {
-    var pending = [];
+    var jobs = {};
     (workflows || []).forEach(function (workflow) {
         (workflow.modules || []).forEach(function (module) {
             var config = module.config || {};
             var path = [config.folder, config.filename].filter(Boolean).join('/');
             if (!path) return;
-            var result = config.ai || {};
-            var aligned = result.path === path && typeof result.code === 'string';
-            var shouldWrite = aligned && (result.dirty === true || (result.dirty !== false && result.source !== 'file'));
-            var code = shouldWrite ? result.code : '';
-            var publish = Promise.resolve();
-            var previousPath = config.previousPath || (config.ai && config.ai.path !== path ? config.ai.path : '');
-            if (module.type !== 'route' && previousPath && previousPath !== path) {
-                publish = postJson(directoryUrl('/rename'), { path: previousPath, name: config.filename, allowMissing: true });
-            }
-            pending.push(publish.then(function () {
-                var moduleConfig = Object.assign({}, config);
-                delete moduleConfig.ai;
-                delete moduleConfig.previousPath;
-                moduleConfig.frontend = (workflow.meta || {}).frontend || aiProject.frontend || 'blade';
-                if (shouldWrite) {
-                    return postJson(aiUrl('file'), {
-                        path: path,
-                        content: code,
-                        expectedHash: result.baseHash == null ? null : result.baseHash
-                    });
-                }
-                return postJson(directoryUrl('/file'), {
+            if (!jobs[path]) jobs[path] = { path: path, workflow: workflow, module: module, configs: [] };
+            jobs[path].configs.push(config);
+        });
+    });
+
+    var pending = Object.keys(jobs).map(function (path) {
+        var job = jobs[path];
+        var config = job.module.config || {};
+        var result = config.ai || {};
+        var aligned = result.path === path && typeof result.code === 'string';
+        var shouldWrite = aligned && (result.dirty === true || (result.dirty !== false && result.source !== 'file'));
+        var previousPath = config.previousPath || (config.ai && config.ai.path !== path ? config.ai.path : '');
+        var publish = Promise.resolve();
+        if (job.module.type !== 'route' && previousPath && previousPath !== path) {
+            publish = postJson(directoryUrl('/rename'), { path: previousPath, name: config.filename, allowMissing: true });
+        }
+        return publish.then(function () {
+            var moduleConfig = Object.assign({}, config);
+            delete moduleConfig.ai;
+            delete moduleConfig.previousPath;
+            moduleConfig.frontend = (job.workflow.meta || {}).frontend || aiProject.frontend || 'blade';
+            if (shouldWrite) {
+                return postJson(aiUrl('file'), {
                     path: path,
-                    content: '',
-                    createOnly: true,
-                    moduleType: module.type,
-                    moduleConfig: moduleConfig
-                }, 'PUT');
-            }).then(function (response) {
+                    content: result.code,
+                    expectedHash: result.baseHash == null ? null : result.baseHash
+                });
+            }
+            return postJson(directoryUrl('/file'), {
+                path: path,
+                content: '',
+                createOnly: true,
+                moduleType: job.module.type,
+                moduleConfig: moduleConfig
+            }, 'PUT');
+        }).then(function (response) {
+            job.configs.forEach(function (config) {
                 delete config.previousPath;
                 if (config.ai && config.ai.path !== path) {
                     delete config.ai;
@@ -157,7 +166,7 @@ async function publishGeneratedFiles(workflows) {
                     config.ai.baseHash = response.hash;
                     config.ai.writtenAt = new Date().toISOString();
                 }
-            }));
+            });
         });
     });
     await Promise.all(pending);
@@ -437,6 +446,7 @@ function renderAiModuleConfig(state) {
         cancelAiGeneration();
         aiPendingFileRequest = null;
         aiFileEditorActive = null;
+        aiTextEditorActive = null;
         aiConfigKey = key;
         aiFeedback = { message: '', error: false };
         moduleConfigPanel.innerHTML = '';
@@ -449,6 +459,10 @@ function renderAiModuleConfig(state) {
         ensureModuleSource(module, workflow);
         return;
     }
+    if (aiTextEditorActive && aiTextEditorActive.workflowId === workflow.id && aiTextEditorActive.moduleId === module.id) {
+        renderModuleTextEditor(module);
+        return;
+    }
 
     if (!moduleConfigPanel.firstChild) {
         var definition = moduleDefinition(module.type);
@@ -459,7 +473,7 @@ function renderAiModuleConfig(state) {
             '<div class="ai-toolbar"><label class="ai-live"><input type="checkbox" data-ai-live>Live</label><button class="workflow-action" type="button" data-ai-stop hidden>Stop</button><button class="workflow-action ai-primary" type="button" data-ai-generate>Generate</button><button class="workflow-action" type="button" data-ai-setup>AI settings</button></div>' +
             '<p class="ai-status" role="status" aria-live="polite" data-ai-message></p>' +
             '<section class="ai-file-request" data-ai-file-request hidden><strong>AI requests another file</strong><code data-ai-file-request-path></code><p data-ai-file-request-reason></p><div class="ai-toolbar"><button class="workflow-action ai-primary" type="button" data-ai-file-grant>Grant access</button><button class="workflow-action" type="button" data-ai-file-deny>Deny and continue</button></div></section>' +
-            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Module file</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button><button class="workflow-action" type="button" data-ai-edit-file>Edit file</button></div>' +
+            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Module file</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button><button class="workflow-action" type="button" data-ai-edit-file>Code editor</button></div>' +
             '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Module file code" placeholder="Loading the module file..." readonly></textarea>' +
             '<section class="ai-section" data-ai-table hidden></section>' +
             '<div class="ai-toolbar"><span class="ai-status" data-ai-path></span><button class="workflow-action ai-primary" type="button" data-ai-write>Save file</button></div>' +
@@ -485,6 +499,17 @@ function renderAiModuleConfig(state) {
         }
         var prompt = addConfigField(moduleConfigPanel.querySelector('[data-ai-prompt]'), module, { key: 'prompt', label: 'What should this module do?', type: 'textarea' });
         prompt.maxLength = 16000;
+        var promptLabel = prompt.previousElementSibling;
+        var promptHeader = document.createElement('div');
+        promptHeader.className = 'ai-prompt-field-header';
+        prompt.parentElement.insertBefore(promptHeader, promptLabel);
+        promptHeader.appendChild(promptLabel);
+        var promptEditorButton = document.createElement('button');
+        promptEditorButton.type = 'button';
+        promptEditorButton.className = 'workflow-action ai-prompt-editor-button';
+        promptEditorButton.dataset.aiEditPrompt = '';
+        promptEditorButton.textContent = 'Text Editor';
+        promptHeader.appendChild(promptEditorButton);
         var fields = moduleConfigPanel.querySelector('[data-ai-fields]');
         addConfigField(fields, module, { key: 'description', label: 'Description', type: 'textarea', root: true });
         (definition.fields || []).forEach(function (field) { addConfigField(fields, module, field); });
@@ -541,6 +566,7 @@ function renderAiModuleConfig(state) {
             window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         });
         moduleConfigPanel.querySelector('[data-ai-edit-file]').addEventListener('click', openModuleFileEditor);
+        moduleConfigPanel.querySelector('[data-ai-edit-prompt]').addEventListener('click', openModuleTextEditor);
         moduleConfigPanel.querySelector('[data-ai-write]').addEventListener('click', writeGeneratedFile);
         moduleConfigPanel.querySelector('[data-ai-file-grant]').addEventListener('click', function () { answerAiFileRequest('grant'); });
         moduleConfigPanel.querySelector('[data-ai-file-deny]').addEventListener('click', function () { answerAiFileRequest('deny'); });
@@ -578,6 +604,87 @@ function closeModuleFileEditor() {
     renderModuleConfig(workflowStore.getState());
 }
 
+function openModuleTextEditor() {
+    var workflow = workflowStore.getActiveWorkflow();
+    var module = workflowStore.getSelectedModule();
+    if (!workflow || !module) return;
+    aiTextEditorActive = { workflowId: workflow.id, moduleId: module.id };
+    moduleConfigPanel.innerHTML = '';
+    renderModuleConfig(workflowStore.getState());
+}
+
+function closeModuleTextEditor() {
+    aiTextEditorActive = null;
+    moduleConfigPanel.innerHTML = '';
+    renderModuleConfig(workflowStore.getState());
+}
+
+function moduleEditorSurfaceMarkup(kind, ariaLabel, spellcheck) {
+    return '<div class="code-editor-shell module-embedded-editor-shell" data-module-' + kind + '-editor-shell>' +
+        '<div class="code-gutter" aria-hidden="true"><div class="code-gutter-lines" data-module-editor-gutter>1</div></div>' +
+        '<pre class="code-highlight" data-module-editor-highlight aria-hidden="true"><code></code></pre>' +
+        '<textarea class="file-editor" data-module-' + kind + '-content spellcheck="' + spellcheck + '" wrap="off" aria-label="' + ariaLabel + '"></textarea>' +
+        '</div>';
+}
+
+function syncModuleEditorSurface(shell, editor) {
+    var highlight = shell.querySelector('[data-module-editor-highlight]');
+    highlight.scrollTop = editor.scrollTop;
+    highlight.scrollLeft = editor.scrollLeft;
+    shell.querySelector('[data-module-editor-gutter]').style.transform = 'translateY(-' + editor.scrollTop + 'px)';
+}
+
+function updateModuleEditorSurface(shell, editor, language) {
+    var value = editor.value || '';
+    var lineCount = Math.max(1, value.split('\n').length);
+    var lines = [];
+    for (var index = 1; index <= lineCount; index += 1) lines.push(index);
+    shell.querySelector('[data-module-editor-gutter]').textContent = lines.join('\n');
+    shell.querySelector('[data-module-editor-highlight] code').innerHTML = highlightCode(value, language);
+    syncModuleEditorSurface(shell, editor);
+}
+
+function bindModuleEditorSurface(shell, editor) {
+    editor.addEventListener('scroll', function () { syncModuleEditorSurface(shell, editor); });
+    editor.addEventListener('keydown', function (event) {
+        if (event.key !== 'Tab') return;
+        event.preventDefault();
+        var start = editor.selectionStart;
+        editor.setRangeText('    ', start, editor.selectionEnd, 'end');
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+}
+
+function renderModuleTextEditor(module) {
+    if (!moduleConfigPanel.querySelector('[data-module-text-editor]')) {
+        moduleConfigPanel.innerHTML = '<section class="module-file-editor-view" data-module-text-editor>' +
+            '<header class="module-config-header"><button type="button" class="module-editor-back" data-module-text-back aria-label="Back to module editor" title="Back to module editor"><span aria-hidden="true">&#8249;</span><span>Back</span></button><span><span class="workflow-title">What should this module do?</span><span class="workflow-meta" data-module-text-title></span></span></header>' +
+            moduleEditorSurfaceMarkup('text', 'What should this module do?', 'true') +
+            '<footer class="module-file-editor-footer"><span class="ai-status" role="status" aria-live="polite">Changes are kept in the module draft.</span></footer>' +
+            '</section>';
+        moduleConfigPanel.querySelector('[data-module-text-back]').addEventListener('click', closeModuleTextEditor);
+        var textShell = moduleConfigPanel.querySelector('[data-module-text-editor-shell]');
+        var textEditor = moduleConfigPanel.querySelector('[data-module-text-content]');
+        bindModuleEditorSurface(textShell, textEditor);
+        textEditor.addEventListener('input', function (event) {
+            var current = workflowStore.getSelectedModule();
+            if (!current || current.id !== module.id) return;
+            event.target.dataset.source = event.target.value;
+            updateModuleEditorSurface(textShell, event.target, 'plain');
+            workflowStore.updateModule(module.id, { config: { prompt: event.target.value } }, { historyGroup: module.id + ':prompt' });
+            queueModuleGeneration();
+        });
+    }
+    var editor = moduleConfigPanel.querySelector('[data-module-text-content]');
+    var prompt = module.config.prompt || '';
+    if (editor.dataset.source !== prompt) {
+        editor.value = prompt;
+        editor.dataset.source = prompt;
+    }
+    moduleConfigPanel.querySelector('[data-module-text-title]').textContent = module.label + ' · Markdown';
+    updateModuleEditorSurface(moduleConfigPanel.querySelector('[data-module-text-editor-shell]'), editor, 'plain');
+}
+
 function renderModuleFileEditor(module, workflow) {
     var path = [module.config.folder, module.config.filename].filter(Boolean).join('/');
     var result = module.config.ai || {};
@@ -585,15 +692,19 @@ function renderModuleFileEditor(module, workflow) {
     if (!moduleConfigPanel.querySelector('[data-module-file-editor]')) {
         moduleConfigPanel.innerHTML = '<section class="module-file-editor-view" data-module-file-editor>' +
             '<header class="module-config-header"><button type="button" class="module-editor-back" data-module-file-back aria-label="Back to module editor" title="Back to module editor"><span aria-hidden="true">&#8249;</span><span>Back</span></button><span><span class="workflow-title" data-module-file-title></span><span class="workflow-meta" data-module-file-path></span></span></header>' +
-            '<textarea class="ai-code module-file-editor-textarea" data-module-file-content spellcheck="false" wrap="off" aria-label="Edit module file"></textarea>' +
+            moduleEditorSurfaceMarkup('file', 'Edit module file', 'false') +
             '<footer class="module-file-editor-footer"><span class="ai-status" role="status" aria-live="polite" data-module-file-status></span><button class="workflow-action ai-primary" type="button" data-module-file-save>Save file</button></footer>' +
             '</section>';
         moduleConfigPanel.querySelector('[data-module-file-back]').addEventListener('click', closeModuleFileEditor);
-        moduleConfigPanel.querySelector('[data-module-file-content]').addEventListener('input', function (event) {
+        var fileShell = moduleConfigPanel.querySelector('[data-module-file-editor-shell]');
+        var fileEditor = moduleConfigPanel.querySelector('[data-module-file-content]');
+        bindModuleEditorSurface(fileShell, fileEditor);
+        fileEditor.addEventListener('input', function (event) {
             var current = workflowStore.getSelectedModule();
             if (!current || current.id !== module.id) return;
             var code = event.target.value;
             event.target.dataset.source = code;
+            updateModuleEditorSurface(fileShell, event.target, detectLanguage([current.config.folder, current.config.filename].filter(Boolean).join('/')));
             var ai = Object.assign({}, current.config.ai || {}, {
                 code: code,
                 path: [current.config.folder, current.config.filename].filter(Boolean).join('/'),
@@ -611,6 +722,7 @@ function renderModuleFileEditor(module, workflow) {
         editor.value = code;
         editor.dataset.source = code;
     }
+    updateModuleEditorSurface(moduleConfigPanel.querySelector('[data-module-file-editor-shell]'), editor, detectLanguage(path));
     moduleConfigPanel.querySelector('[data-module-file-title]').textContent = module.label;
     moduleConfigPanel.querySelector('[data-module-file-path]').textContent = path;
     var status = moduleConfigPanel.querySelector('[data-module-file-status]');

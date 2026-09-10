@@ -1841,7 +1841,7 @@
                                         <option value="svelte">Inertia / Svelte</option>
                                     </select>
                                     <button type="button" class="workflow-action" data-workflow-auto>Auto</button>
-                                    <a class="workflow-action" href="/appyhp/studio/web/" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Web ↗</a>
+                                    <a class="workflow-action studio-docs-link" href="/appyhp/studio/web/index.html" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Docs ↗</a>
                                 </span>
                             </header>
                             <div class="workflow-toolbar">
@@ -1880,7 +1880,7 @@
                                 <input class="editor-name" data-editor-name aria-label="File name" disabled>
                                 <button type="button" class="workflow-action icon-only" data-editor-info aria-label="File information" title="File information">i</button>
                                 <button type="button" class="workflow-action icon-only" data-editor-notes aria-label="File notes" title="File notes">✎</button>
-                                <a class="workflow-action" href="/appyhp/studio/web/" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Web ↗</a>
+                                <a class="workflow-action studio-docs-link" href="/appyhp/studio/web/index.html" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Docs ↗</a>
                             </div>
                             <div class="code-editor-shell empty" data-code-editor-shell>
                                 <div class="code-gutter" aria-hidden="true">
@@ -2105,6 +2105,7 @@
 
             function closeModuleEditor() {
                 aiFileEditorActive = null;
+                aiTextEditorActive = null;
                 workflowStore.selectModule(null);
                 leaveModuleEditorLayout();
             }
@@ -3018,6 +3019,43 @@
                 };
             }
 
+            function moduleTargetPath(module) {
+                var config = (module && module.config) || {};
+                return [config.folder, config.filename]
+                    .filter(Boolean)
+                    .join('/')
+                    .replace(/^\/+|\/+$/g, '');
+            }
+
+            function inheritFileModuleAttributes(target, source) {
+                var identity = { id: target.id, type: target.type, x: target.x, y: target.y };
+                var inherited = cloneWorkflowValue(source || {});
+                delete inherited.id;
+                delete inherited.type;
+                delete inherited.x;
+                delete inherited.y;
+                if (inherited.config) delete inherited.config.previousPath;
+                return Object.assign({}, target, inherited, identity);
+            }
+
+            function synchronizeModulesByFile(workflows) {
+                var canonicalByPath = {};
+                return (workflows || []).map(function (workflow, workflowIndex) {
+                    var synced = Object.assign({}, workflow, {
+                        modules: (workflow.modules || []).map(function (module) {
+                            var path = moduleTargetPath(module);
+                            if (!path) return module;
+                            if (!canonicalByPath[path]) {
+                                canonicalByPath[path] = cloneWorkflowValue(module);
+                                return module;
+                            }
+                            return inheritFileModuleAttributes(module, canonicalByPath[path]);
+                        })
+                    });
+                    return normalizeWorkflow(synced, workflowIndex);
+                });
+            }
+
             function createLaravelWorkflowStore() {
                 var state = {
                     workflows: [],
@@ -3145,7 +3183,7 @@
 
                     return requestJson(workflowUrl())
                         .then(function (payload) {
-                            state.workflows = (payload.workflows || []).map(normalizeWorkflow);
+                            state.workflows = synchronizeModulesByFile((payload.workflows || []).map(normalizeWorkflow));
                             state.selectedWorkflowId = state.workflows[0] ? state.workflows[0].id : null;
                             state.selectedModuleId = null;
                             state.connectingFrom = null;
@@ -3184,7 +3222,7 @@
                         }, 'PUT');
                     }).then(function (payload) {
                         if (revision === savedRevision) {
-                            state.workflows = (payload.workflows || state.workflows).map(normalizeWorkflow);
+                            state.workflows = synchronizeModulesByFile((payload.workflows || state.workflows).map(normalizeWorkflow));
                             state.dirty = false;
                         }
                         if (!state.workflows.some(function (workflow) {
@@ -3227,6 +3265,7 @@
                         ],
                         meta: { createdAt: now, updatedAt: now }
                     }, state.workflows.length));
+                    state.workflows = synchronizeModulesByFile(state.workflows);
                     state.selectedWorkflowId = id;
                     state.selectedModuleId = null;
                     state.connectingFrom = null;
@@ -3238,6 +3277,7 @@
                 function importWorkflow(workflow) {
                     recordHistory();
                     state.workflows.push(normalizeWorkflow(workflow, state.workflows.length));
+                    state.workflows = synchronizeModulesByFile(state.workflows);
                     state.selectedWorkflowId = state.workflows[state.workflows.length - 1].id;
                     state.selectedModuleId = null;
                     state.connectingFrom = null;
@@ -3389,12 +3429,21 @@
                     updateActiveWorkflow(function (current) {
                         var position = nextVisibleModulePosition(current);
                         var moduleId = createId('mod');
-                        current.modules.push(createModuleFromType(
+                        var added = createModuleFromType(
                             type,
                             moduleId,
                             position.x,
                             position.y
-                        ));
+                        );
+                        var path = moduleTargetPath(added);
+                        var existing = null;
+                        state.workflows.some(function (entry) {
+                            existing = (entry.modules || []).find(function (module) {
+                                return moduleTargetPath(module) === path;
+                            }) || null;
+                            return Boolean(existing);
+                        });
+                        current.modules.push(existing ? inheritFileModuleAttributes(added, existing) : added);
                         state.pendingFocusModuleId = moduleId;
                         return current;
                     });
@@ -3422,23 +3471,57 @@
                 }
 
                 function updateModule(moduleId, patch, options) {
-                    updateActiveWorkflow(function (current) {
-                        current.modules = current.modules.map(function (module) {
-                            if (module.id !== moduleId) {
-                                return module;
-                            }
+                    var workflowId = (options && options.workflowId) || state.selectedWorkflowId;
+                    var sourceWorkflow = state.workflows.find(function (workflow) { return workflow.id === workflowId; });
+                    var sourceModule = sourceWorkflow && sourceWorkflow.modules.find(function (module) { return module.id === moduleId; });
+                    if (!sourceWorkflow || !sourceModule) return;
 
-                            return normalizeWorkflow({
-                                id: current.id,
-                                name: current.name,
-                                modules: [Object.assign({}, module, patch, {
-                                    config: Object.assign({}, module.config || {}, patch.config || {})
-                                })],
-                                edges: []
-                            }, 0).modules[0];
+                    var beforePath = moduleTargetPath(sourceModule);
+                    var updatedModule = normalizeWorkflow({
+                        id: sourceWorkflow.id,
+                        name: sourceWorkflow.name,
+                        meta: sourceWorkflow.meta,
+                        modules: [Object.assign({}, sourceModule, patch, {
+                            config: Object.assign({}, sourceModule.config || {}, patch.config || {})
+                        })],
+                        edges: []
+                    }, 0).modules[0];
+                    var afterPath = moduleTargetPath(updatedModule);
+                    var changedTarget = beforePath !== afterPath;
+
+                    if (changedTarget && afterPath) {
+                        var canonical = null;
+                        state.workflows.some(function (workflow) {
+                            canonical = (workflow.modules || []).find(function (module) {
+                                return !(workflow.id === workflowId && module.id === moduleId) && moduleTargetPath(module) === afterPath;
+                            }) || null;
+                            return Boolean(canonical);
                         });
-                        return current;
-                    }, options);
+                        if (canonical) updatedModule = inheritFileModuleAttributes(updatedModule, canonical);
+                    }
+
+                    if (!options || !options.skipHistory) recordHistory(options && options.historyGroup);
+                    var now = new Date().toISOString();
+                    state.workflows = state.workflows.map(function (workflow, workflowIndex) {
+                        var changed = false;
+                        var modules = workflow.modules.map(function (module) {
+                            if (workflow.id === workflowId && module.id === moduleId) {
+                                changed = true;
+                                return updatedModule;
+                            }
+                            if (!changedTarget && afterPath && moduleTargetPath(module) === afterPath) {
+                                changed = true;
+                                return inheritFileModuleAttributes(module, updatedModule);
+                            }
+                            return module;
+                        });
+                        if (!changed) return workflow;
+                        return normalizeWorkflow(Object.assign({}, workflow, {
+                            modules: modules,
+                            meta: Object.assign({}, workflow.meta || {}, { updatedAt: now })
+                        }), workflowIndex);
+                    });
+                    markDirty(options);
                 }
 
                 function setFrontend(frontend) {

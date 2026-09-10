@@ -58,7 +58,18 @@ try {
     }));
     assert.ok(Math.abs(moduleEditorWidths.panel - moduleEditorWidths.body) < 2, 'The full-screen module body must not have large side margins');
     const prompt = page.getByLabel('What should this module do?', { exact: true });
-    await prompt.fill('Create customers with name and unique email.');
+    await page.getByRole('button', { name: 'Text Editor', exact: true }).click();
+    await page.locator('[data-module-text-editor]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-ai-generate]').count(), 0, 'The text editor must replace the module configuration view');
+    assert.equal(await page.locator('[data-module-text-editor-shell] .code-gutter').count(), 1);
+    assert.equal(await page.locator('[data-module-text-editor-shell] .code-highlight').count(), 1);
+    await page.locator('[data-module-text-content]').fill('Create customers with name and unique email.');
+    await page.locator('[data-undo]').click();
+    assert.equal(await page.locator('[data-module-text-content]').inputValue(), '');
+    await page.locator('[data-redo]').click();
+    assert.equal(await page.locator('[data-module-text-content]').inputValue(), 'Create customers with name and unique email.');
+    await page.locator('[data-module-text-back]').click();
+    assert.equal(await prompt.inputValue(), 'Create customers with name and unique email.');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Schema::create'));
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     assert.equal(await page.locator('[data-ai-table] tbody tr').count(), 3);
@@ -118,9 +129,11 @@ try {
     assert.match(await readFile(join(project, 'routes/channels.php'), 'utf8'), /Facades\\Broadcast/);
     await page.getByLabel('Route file', { exact: true }).selectOption('web');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
-    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await page.getByRole('button', { name: 'Code editor', exact: true }).click();
     await page.locator('[data-module-file-editor]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-ai-prompt]').count(), 0, 'The file editor must replace the module configuration view');
+    assert.equal(await page.locator('[data-module-file-editor-shell] .code-gutter').count(), 1);
+    assert.ok(await page.locator('[data-module-file-editor-shell] .token-comment').count() > 0, 'PHP comments should be syntax highlighted');
     await page.locator('[data-module-file-content]').fill("<?php\n// WEB_ROUTE_FILE_EDITED\n");
     await page.locator('[data-module-file-back]').click();
     assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('module-editor-active')), true);
@@ -178,7 +191,7 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE_EDITED'));
     const originalModuleCode = await page.locator('[data-ai-code]').inputValue();
     const editedModuleCode = `${originalModuleCode.trimEnd()}\n// MODULE_HISTORY_EDIT\n`;
-    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await page.getByRole('button', { name: 'Code editor', exact: true }).click();
     await page.locator('[data-module-file-content]').fill(editedModuleCode);
     await page.locator('[data-module-file-back]').click();
     await page.locator('[data-panel-switcher]').click();
@@ -201,6 +214,28 @@ try {
     await page.locator('[data-redo]').click();
     assert.equal(await page.locator('[data-file-editor]').inputValue(), editedDirectoryCode);
 
+    await page.locator('[data-panel-switcher]').click();
+    const routeModules = page.locator('.module-node[data-type="route"] .module-node-label');
+    await routeModules.first().click();
+    const sharedRoutePrompt = await page.getByLabel('What should this module do?', { exact: true }).inputValue();
+    const sharedRouteUri = await page.getByLabel('URI', { exact: true }).inputValue();
+    await page.locator('[data-ai-close]').click();
+    await page.getByRole('button', { name: '+Route', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.module-node[data-type="route"]').length === 2);
+    await routeModules.last().click();
+    assert.equal(await page.getByLabel('What should this module do?', { exact: true }).inputValue(), sharedRoutePrompt);
+    assert.equal(await page.getByLabel('URI', { exact: true }).inputValue(), sharedRouteUri);
+    await page.getByRole('button', { name: 'Text Editor', exact: true }).click();
+    await page.locator('[data-module-text-content]').fill('Shared behavior for routes/web.php');
+    await page.locator('[data-module-text-back]').click();
+    await page.locator('[data-ai-close]').click();
+    await routeModules.first().click();
+    assert.equal(await page.getByLabel('What should this module do?', { exact: true }).inputValue(), 'Shared behavior for routes/web.php');
+    await page.locator('[data-undo]').click();
+    assert.equal(await page.getByLabel('What should this module do?', { exact: true }).inputValue(), sharedRoutePrompt);
+    await page.locator('[data-redo]').click();
+    assert.equal(await page.getByLabel('What should this module do?', { exact: true }).inputValue(), 'Shared behavior for routes/web.php');
+
     await page.locator('.theme-button').click();
     await page.screenshot({ path: join(artifacts, 'inertia-desktop-light.png') });
     assert.ok(firstCode.includes('Schema::create'));
@@ -222,7 +257,7 @@ try {
         await page.locator('[data-ai-settings-close]').click();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'nested file editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
+    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'nested file editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'shared file module attributes', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
 } catch (error) {
     console.error(`Browser artifacts: ${artifacts}`);
     if (browser) {
