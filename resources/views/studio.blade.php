@@ -172,12 +172,6 @@
             width: 100%;
         }
 
-        .studio-shell.module-editor-active .workflow-config-panel .module-config-body {
-            margin: 0 auto;
-            max-width: 1180px;
-            width: 100%;
-        }
-
         .studio-header,
         .studio-sidebar-header {
             align-items: center;
@@ -2110,6 +2104,7 @@
             }
 
             function closeModuleEditor() {
+                aiFileEditorActive = null;
                 workflowStore.selectModule(null);
                 leaveModuleEditorLayout();
             }

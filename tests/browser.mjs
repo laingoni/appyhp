@@ -52,6 +52,11 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-module-config-panel]').clientWidth > 1300);
     assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('module-editor-active')), true);
     assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), true);
+    const moduleEditorWidths = await page.evaluate(() => ({
+        panel: document.querySelector('[data-module-config-panel]').getBoundingClientRect().width,
+        body: document.querySelector('.module-config-body').getBoundingClientRect().width
+    }));
+    assert.ok(Math.abs(moduleEditorWidths.panel - moduleEditorWidths.body) < 2, 'The full-screen module body must not have large side margins');
     const prompt = page.getByLabel('What should this module do?', { exact: true });
     await prompt.fill('Create customers with name and unique email.');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Schema::create'));
@@ -113,7 +118,13 @@ try {
     assert.match(await readFile(join(project, 'routes/channels.php'), 'utf8'), /Facades\\Broadcast/);
     await page.getByLabel('Route file', { exact: true }).selectOption('web');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
-    await page.locator('[data-ai-code]').fill("<?php\n// WEB_ROUTE_FILE_EDITED\n");
+    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await page.locator('[data-module-file-editor]').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('[data-ai-prompt]').count(), 0, 'The file editor must replace the module configuration view');
+    await page.locator('[data-module-file-content]').fill("<?php\n// WEB_ROUTE_FILE_EDITED\n");
+    await page.locator('[data-module-file-back]').click();
+    assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('module-editor-active')), true);
+    assert.match(await page.locator('[data-ai-code]').inputValue(), /WEB_ROUTE_FILE_EDITED/);
     await page.getByRole('button', { name: 'Save file', exact: true }).click();
     await page.locator('[data-ai-message]').filter({ hasText: 'Written to routes/web.php.' }).waitFor();
     assert.match(await readFile(join(project, 'routes/web.php'), 'utf8'), /WEB_ROUTE_FILE_EDITED/);
@@ -167,7 +178,9 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE_EDITED'));
     const originalModuleCode = await page.locator('[data-ai-code]').inputValue();
     const editedModuleCode = `${originalModuleCode.trimEnd()}\n// MODULE_HISTORY_EDIT\n`;
-    await page.locator('[data-ai-code]').fill(editedModuleCode);
+    await page.getByRole('button', { name: 'Edit file', exact: true }).click();
+    await page.locator('[data-module-file-content]').fill(editedModuleCode);
+    await page.locator('[data-module-file-back]').click();
     await page.locator('[data-panel-switcher]').click();
     await page.locator('.tree-entry[title="routes"]').click();
     await page.locator('.tree-entry[title="routes/web.php"]').click();
@@ -209,7 +222,7 @@ try {
         await page.locator('[data-ai-settings-close]').click();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
+    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'nested file editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
 } catch (error) {
     console.error(`Browser artifacts: ${artifacts}`);
     if (browser) {

@@ -8,6 +8,7 @@ var aiConfigKey = '';
 var aiWriting = false;
 var aiSourceLoads = {};
 var aiPendingFileRequest = null;
+var aiFileEditorActive = null;
 var loveModal = document.querySelector('[data-love-modal]');
 var loveCard = loveModal.querySelector('.love-card');
 var loveCopyStatus = loveModal.querySelector('[data-love-copy-status]');
@@ -435,6 +436,7 @@ function renderAiModuleConfig(state) {
     if (key !== aiConfigKey) {
         cancelAiGeneration();
         aiPendingFileRequest = null;
+        aiFileEditorActive = null;
         aiConfigKey = key;
         aiFeedback = { message: '', error: false };
         moduleConfigPanel.innerHTML = '';
@@ -442,6 +444,11 @@ function renderAiModuleConfig(state) {
     moduleConfigPanel.classList.toggle('active', Boolean(module));
     if (!module) return;
     if (aiJob && aiJob.fingerprint !== workflowFingerprint(workflow)) cancelAiGeneration('Workflow changed. Generate again.');
+    if (aiFileEditorActive && aiFileEditorActive.workflowId === workflow.id && aiFileEditorActive.moduleId === module.id) {
+        renderModuleFileEditor(module, workflow);
+        ensureModuleSource(module, workflow);
+        return;
+    }
 
     if (!moduleConfigPanel.firstChild) {
         var definition = moduleDefinition(module.type);
@@ -452,8 +459,8 @@ function renderAiModuleConfig(state) {
             '<div class="ai-toolbar"><label class="ai-live"><input type="checkbox" data-ai-live>Live</label><button class="workflow-action" type="button" data-ai-stop hidden>Stop</button><button class="workflow-action ai-primary" type="button" data-ai-generate>Generate</button><button class="workflow-action" type="button" data-ai-setup>AI settings</button></div>' +
             '<p class="ai-status" role="status" aria-live="polite" data-ai-message></p>' +
             '<section class="ai-file-request" data-ai-file-request hidden><strong>AI requests another file</strong><code data-ai-file-request-path></code><p data-ai-file-request-reason></p><div class="ai-toolbar"><button class="workflow-action ai-primary" type="button" data-ai-file-grant>Grant access</button><button class="workflow-action" type="button" data-ai-file-deny>Deny and continue</button></div></section>' +
-            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Module file</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button></div>' +
-            '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Module file code" placeholder="Loading the module file..."></textarea>' +
+            '<div class="ai-toolbar"><span class="ai-status" data-ai-code-state>Module file</span><button class="workflow-action" type="button" data-ai-copy>Copy</button><button class="workflow-action" type="button" data-ai-download>Download</button><button class="workflow-action" type="button" data-ai-edit-file>Edit file</button></div>' +
+            '<textarea class="ai-code" data-ai-code spellcheck="false" wrap="off" aria-label="Module file code" placeholder="Loading the module file..." readonly></textarea>' +
             '<section class="ai-section" data-ai-table hidden></section>' +
             '<div class="ai-toolbar"><span class="ai-status" data-ai-path></span><button class="workflow-action ai-primary" type="button" data-ai-write>Save file</button></div>' +
             '<p class="ai-status" data-ai-summary></p>' +
@@ -520,6 +527,7 @@ function renderAiModuleConfig(state) {
                 dirty: true,
                 editedAt: new Date().toISOString()
             });
+            aiFeedback = { message: 'Unsaved changes', error: false };
             workflowStore.updateModule(module.id, { config: { ai: ai } }, { historyGroup: module.id + ':code' });
         });
         moduleConfigPanel.querySelector('[data-ai-download]').addEventListener('click', function () {
@@ -532,6 +540,7 @@ function renderAiModuleConfig(state) {
             link.click();
             window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         });
+        moduleConfigPanel.querySelector('[data-ai-edit-file]').addEventListener('click', openModuleFileEditor);
         moduleConfigPanel.querySelector('[data-ai-write]').addEventListener('click', writeGeneratedFile);
         moduleConfigPanel.querySelector('[data-ai-file-grant]').addEventListener('click', function () { answerAiFileRequest('grant'); });
         moduleConfigPanel.querySelector('[data-ai-file-deny]').addEventListener('click', function () { answerAiFileRequest('deny'); });
@@ -552,6 +561,64 @@ function renderAiModuleConfig(state) {
     renderAiOutput(module, workflow);
     renderAiConnections(module, workflow);
     ensureModuleSource(module, workflow);
+}
+
+function openModuleFileEditor() {
+    var workflow = workflowStore.getActiveWorkflow();
+    var module = workflowStore.getSelectedModule();
+    if (!workflow || !module || !module.config.ai || typeof module.config.ai.code !== 'string' || aiJob || aiWriting) return;
+    aiFileEditorActive = { workflowId: workflow.id, moduleId: module.id };
+    moduleConfigPanel.innerHTML = '';
+    renderModuleConfig(workflowStore.getState());
+}
+
+function closeModuleFileEditor() {
+    aiFileEditorActive = null;
+    moduleConfigPanel.innerHTML = '';
+    renderModuleConfig(workflowStore.getState());
+}
+
+function renderModuleFileEditor(module, workflow) {
+    var path = [module.config.folder, module.config.filename].filter(Boolean).join('/');
+    var result = module.config.ai || {};
+    var stale = Boolean(result.code && result.contextHash && result.contextHash !== workflowFingerprint(workflow));
+    if (!moduleConfigPanel.querySelector('[data-module-file-editor]')) {
+        moduleConfigPanel.innerHTML = '<section class="module-file-editor-view" data-module-file-editor>' +
+            '<header class="module-config-header"><button type="button" class="module-editor-back" data-module-file-back aria-label="Back to module editor" title="Back to module editor"><span aria-hidden="true">&#8249;</span><span>Back</span></button><span><span class="workflow-title" data-module-file-title></span><span class="workflow-meta" data-module-file-path></span></span></header>' +
+            '<textarea class="ai-code module-file-editor-textarea" data-module-file-content spellcheck="false" wrap="off" aria-label="Edit module file"></textarea>' +
+            '<footer class="module-file-editor-footer"><span class="ai-status" role="status" aria-live="polite" data-module-file-status></span><button class="workflow-action ai-primary" type="button" data-module-file-save>Save file</button></footer>' +
+            '</section>';
+        moduleConfigPanel.querySelector('[data-module-file-back]').addEventListener('click', closeModuleFileEditor);
+        moduleConfigPanel.querySelector('[data-module-file-content]').addEventListener('input', function (event) {
+            var current = workflowStore.getSelectedModule();
+            if (!current || current.id !== module.id) return;
+            var code = event.target.value;
+            event.target.dataset.source = code;
+            var ai = Object.assign({}, current.config.ai || {}, {
+                code: code,
+                path: [current.config.folder, current.config.filename].filter(Boolean).join('/'),
+                dirty: true,
+                editedAt: new Date().toISOString()
+            });
+            aiFeedback = { message: 'Unsaved changes', error: false };
+            workflowStore.updateModule(module.id, { config: { ai: ai } }, { historyGroup: module.id + ':code' });
+        });
+        moduleConfigPanel.querySelector('[data-module-file-save]').addEventListener('click', writeGeneratedFile);
+    }
+    var editor = moduleConfigPanel.querySelector('[data-module-file-content]');
+    var code = typeof result.code === 'string' ? result.code : '';
+    if (editor.dataset.source !== code) {
+        editor.value = code;
+        editor.dataset.source = code;
+    }
+    moduleConfigPanel.querySelector('[data-module-file-title]').textContent = module.label;
+    moduleConfigPanel.querySelector('[data-module-file-path]').textContent = path;
+    var status = moduleConfigPanel.querySelector('[data-module-file-status]');
+    status.textContent = aiFeedback.message || (stale ? 'Workflow changed since generation' : (result.dirty ? 'Unsaved changes' : 'Editing file content'));
+    status.dataset.error = aiFeedback.error ? 'true' : 'false';
+    var save = moduleConfigPanel.querySelector('[data-module-file-save]');
+    save.disabled = typeof result.code !== 'string' || stale || aiWriting;
+    save.textContent = aiWriting ? 'Saving...' : 'Save file';
 }
 
 function answerAiFileRequest(decision) {
@@ -663,6 +730,7 @@ function renderAiOutput(module, workflow) {
     moduleConfigPanel.querySelector('[data-ai-setup]').hidden = Boolean(aiSettings && aiSettings.configured);
     moduleConfigPanel.querySelector('[data-ai-copy]').disabled = !code;
     moduleConfigPanel.querySelector('[data-ai-download]').disabled = !code;
+    moduleConfigPanel.querySelector('[data-ai-edit-file]').disabled = typeof result.code !== 'string' || Boolean(aiJob) || aiWriting || loading;
     moduleConfigPanel.querySelector('[data-ai-write]').disabled = typeof result.code !== 'string' || Boolean(aiJob) || stale || aiWriting || result.path !== path;
     moduleConfigPanel.querySelector('[data-ai-write]').textContent = aiWriting ? 'Saving...' : 'Save file';
     moduleConfigPanel.querySelector('[data-ai-path]').textContent = path;
