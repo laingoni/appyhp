@@ -35,6 +35,7 @@ class FixtureApplication
                 'session.driver' => 'database',
                 'cache.default' => 'database',
                 'logging.default' => 'errorlog',
+                'appyhp.runtime_path' => $root . '/storage/app/appyhp',
             ]);
             $app['env'] = 'testing';
         });

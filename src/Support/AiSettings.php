@@ -9,12 +9,14 @@ use Illuminate\Validation\ValidationException;
 
 class AiSettings
 {
+    public function __construct(private RuntimeStorage $runtime) {}
+
     public function read(): array
     {
         $settings = array_intersect_key(config('appyhp.ai', []), array_flip([
             'provider', 'base_url', 'model', 'api_key', 'live', 'debounce_ms',
         ]));
-        $path = storage_path('app/appyhp/ai-settings.json');
+        $path = $this->runtime->path('ai-settings.json');
 
         if (is_file($path)) {
             $stored = json_decode(file_get_contents($path), true);
@@ -76,10 +78,7 @@ class AiSettings
 
     public function save(array $settings): array
     {
-        $directory = storage_path('app/appyhp');
-        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-            abort(500, 'Unable to create Appyhp settings directory.');
-        }
+        $directory = $this->runtime->ensure();
 
         $stored = $settings;
         $stored['api_key'] = $settings['api_key'] === '' ? '' : Crypt::encryptString($settings['api_key']);

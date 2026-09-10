@@ -2,6 +2,7 @@
 
 namespace Alliswell\Appyhp\Http\Middleware;
 
+use Alliswell\Appyhp\Support\RuntimeStorage;
 use Closure;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Request;
@@ -18,10 +19,7 @@ class StudioSession extends StartSession
 
     public function getSession(Request $request)
     {
-        $directory = storage_path('app/appyhp/sessions');
-        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
-            abort(500, 'Unable to create the studio session directory.');
-        }
+        $directory = app(RuntimeStorage::class)->ensure('sessions', 0700);
 
         // The builder must work before the host application's database is set up.
         $session = new Store('appyhp_session', new FileSessionHandler(new Filesystem, $directory, 120));

@@ -112,4 +112,29 @@ class AiController
 
         return response()->json($files->write($input['path'], $input['content'], $input['expectedHash']));
     }
+
+    public function explainFile(Request $request, AiSettings $settings, AiGateway $gateway, ProjectFiles $files): JsonResponse
+    {
+        $input = $request->validate([
+            'path' => ['required', 'string', 'max:700'],
+        ]);
+        $resolved = $settings->read();
+        abort_unless($settings->publicSettings($resolved)['configured'], 422, 'Configure an AI provider and model in Settings first.');
+        $snapshot = $files->snapshot($input['path']);
+        abort_unless($snapshot['exists'], 404, 'The selected file does not exist.');
+
+        try {
+            $explanation = $gateway->stream(
+                $resolved,
+                'Explain source code clearly for a developer. State the file purpose, its main responsibilities, important inputs/outputs, and notable dependencies. Do not make changes or invent behavior. Return concise plain text with short paragraphs or bullets.',
+                json_encode(['path' => $snapshot['path'], 'content' => $snapshot['content']], JSON_THROW_ON_ERROR),
+                static fn (): bool => true,
+                1200
+            );
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json(['path' => $input['path'], 'explanation' => $explanation]);
+    }
 }

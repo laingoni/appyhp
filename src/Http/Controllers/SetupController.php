@@ -2,11 +2,14 @@
 
 namespace Alliswell\Appyhp\Http\Controllers;
 
+use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SetupController
 {
+    public function __construct(private RuntimeStorage $runtime) {}
+
     /**
      * @var array<int, string>
      */
@@ -73,11 +76,7 @@ class SetupController
      */
     private function writeSetup(array $setup): void
     {
-        $directory = dirname($this->setupPath());
-
-        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-            abort(500, 'Unable to create Appyhp setup directory.');
-        }
+        $this->runtime->ensure();
 
         $encoded = json_encode($setup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
@@ -99,6 +98,6 @@ class SetupController
 
     private function setupPath(): string
     {
-        return storage_path('app/appyhp/setup.json');
+        return $this->runtime->path('setup.json');
     }
 }

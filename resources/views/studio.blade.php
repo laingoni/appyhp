@@ -85,6 +85,10 @@
             font: inherit;
         }
 
+        button, a, select, summary, input[type="checkbox"], input[type="radio"] {
+            cursor: pointer;
+        }
+
         .studio-shell {
             background: var(--light-canvas);
             color: var(--light-text);
@@ -1399,6 +1403,49 @@
             flex: 1 1 auto;
         }
 
+        .editor-name {
+            background: transparent;
+            border: 1px solid transparent;
+            color: inherit;
+            font-size: 0.675rem;
+            min-width: 120px;
+            padding: 0.25rem;
+        }
+
+        .editor-name:focus { border-color: var(--light-line); outline: none; }
+        .dark .editor-name:focus { border-color: var(--dark-line); }
+
+        .editor-toolbar button { flex: 0 0 auto; }
+
+        .studio-modal {
+            align-items: center;
+            background: rgba(15, 23, 42, 0.62);
+            display: none;
+            inset: 0;
+            justify-content: center;
+            padding: 1rem;
+            position: fixed;
+            z-index: 20;
+        }
+        .studio-modal.active { display: flex; }
+        .studio-modal-card {
+            background: var(--light-canvas);
+            border: 1px solid var(--light-line);
+            border-radius: 4px;
+            box-shadow: 0 18px 60px rgba(15, 23, 42, .3);
+            max-width: 520px;
+            width: min(100%, 520px);
+        }
+        .dark .studio-modal-card { background: var(--dark-canvas); border-color: var(--dark-line); }
+        .studio-modal-header, .studio-modal-actions { align-items: center; display: flex; gap: .5rem; justify-content: space-between; padding: .65rem .8rem; }
+        .studio-modal-header { border-bottom: 1px solid var(--light-line); }
+        .dark .studio-modal-header { border-bottom-color: var(--dark-line); }
+        .studio-modal-body { padding: .8rem; }
+        .studio-modal-body textarea { min-height: 150px; resize: vertical; width: 100%; }
+        .studio-modal-ai-result { border-top: 1px solid var(--light-line); margin-top: .75rem; padding-top: .75rem; white-space: pre-wrap; }
+        .dark .studio-modal-ai-result { border-top-color: var(--dark-line); }
+        .clickable { cursor: pointer; }
+
         .code-editor-shell {
             background: #f8fafc;
             border: 0;
@@ -1619,13 +1666,13 @@
         <div class="studio-layout">
             <aside class="studio-sidebar">
                 <div class="studio-sidebar-header">
-                    <a href="{{ route('appyhp.studio') }}" class="studio-brand" aria-label="Studio">
+                    <a href="{{ route('appyhp.studio') }}" class="studio-brand" aria-label="AppyHP">
                         <span class="studio-brand-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" height="24px" width="24px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
                                 <path d="M467.8 98.4C479.8 93.4 493.5 96.2 502.7 105.3L566.7 169.3C572.7 175.3 576.1 183.4 576.1 191.9C576.1 200.4 572.7 208.5 566.7 214.5L502.7 278.5C493.5 287.7 479.8 290.4 467.8 285.4C455.8 280.4 448 268.9 448 256L448 224L416 224C405.9 224 396.4 228.7 390.4 236.8L358 280L318 226.7L339.2 198.4C357.3 174.2 385.8 160 416 160L448 160L448 128C448 115.1 455.8 103.4 467.8 98.4zM218 360L258 413.3L236.8 441.6C218.7 465.8 190.2 480 160 480L96 480C78.3 480 64 465.7 64 448C64 430.3 78.3 416 96 416L160 416C170.1 416 179.6 411.3 185.6 403.2L218 360zM502.6 534.6C493.4 543.8 479.7 546.5 467.7 541.5C455.7 536.5 448 524.9 448 512L448 480L416 480C385.8 480 357.3 465.8 339.2 441.6L185.6 236.8C179.6 228.7 170.1 224 160 224L96 224C78.3 224 64 209.7 64 192C64 174.3 78.3 160 96 160L160 160C190.2 160 218.7 174.2 236.8 198.4L390.4 403.2C396.4 411.3 405.9 416 416 416L448 416L448 384C448 371.1 455.8 359.4 467.8 354.4C479.8 349.4 493.5 352.2 502.7 361.3L566.7 425.3C572.7 431.3 576.1 439.4 576.1 447.9C576.1 456.4 572.7 464.5 566.7 470.5L502.7 534.5z"/>
                             </svg>
                         </span>
-                        Studio
+                        AppyHP
                     </a>
                     <button type="button" class="icon-button sidebar-toggle-button" aria-label="angle">
                         <svg xmlns="http://www.w3.org/2000/svg" height="24px" width="24px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
@@ -1666,13 +1713,13 @@
                 <header class="studio-header">
                     <div class="header-left">
                         <span class="collapsed-brand" hidden>
-                            <a href="{{ route('appyhp.studio') }}" class="studio-brand" aria-label="Studio">
+                            <a href="{{ route('appyhp.studio') }}" class="studio-brand" aria-label="AppyHP">
                                 <span class="studio-brand-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" height="24px" width="24px" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
                                         <path d="M467.8 98.4C479.8 93.4 493.5 96.2 502.7 105.3L566.7 169.3C572.7 175.3 576.1 183.4 576.1 191.9C576.1 200.4 572.7 208.5 566.7 214.5L502.7 278.5C493.5 287.7 479.8 290.4 467.8 285.4C455.8 280.4 448 268.9 448 256L448 224L416 224C405.9 224 396.4 228.7 390.4 236.8L358 280L318 226.7L339.2 198.4C357.3 174.2 385.8 160 416 160L448 160L448 128C448 115.1 455.8 103.4 467.8 98.4zM218 360L258 413.3L236.8 441.6C218.7 465.8 190.2 480 160 480L96 480C78.3 480 64 465.7 64 448C64 430.3 78.3 416 96 416L160 416C170.1 416 179.6 411.3 185.6 403.2L218 360zM502.6 534.6C493.4 543.8 479.7 546.5 467.7 541.5C455.7 536.5 448 524.9 448 512L448 480L416 480C385.8 480 357.3 465.8 339.2 441.6L185.6 236.8C179.6 228.7 170.1 224 160 224L96 224C78.3 224 64 209.7 64 192C64 174.3 78.3 160 96 160L160 160C190.2 160 218.7 174.2 236.8 198.4L390.4 403.2C396.4 411.3 405.9 416 416 416L448 416L448 384C448 371.1 455.8 359.4 467.8 354.4C479.8 349.4 493.5 352.2 502.7 361.3L566.7 425.3C572.7 431.3 576.1 439.4 576.1 447.9C576.1 456.4 572.7 464.5 566.7 470.5L502.7 534.5z"/>
                                     </svg>
                                 </span>
-                                Studio
+                                AppyHP
                             </a>
                         </span>
                         <span class="sidebar-toggle-target"></span>
@@ -1751,6 +1798,7 @@
                                         <option value="svelte">Inertia / Svelte</option>
                                     </select>
                                     <button type="button" class="workflow-action" data-workflow-auto>Auto</button>
+                                    <a class="workflow-action" href="/appyhp/studio/web/" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Web ↗</a>
                                 </span>
                             </header>
                             <div class="workflow-toolbar">
@@ -1786,6 +1834,10 @@
                         <div class="directory-editor-panel">
                             <div class="editor-toolbar">
                                 <div class="editor-path" data-editor-path></div>
+                                <input class="editor-name" data-editor-name aria-label="File name" disabled>
+                                <button type="button" class="workflow-action icon-only" data-editor-info aria-label="File information" title="File information">i</button>
+                                <button type="button" class="workflow-action icon-only" data-editor-notes aria-label="File notes" title="File notes">✎</button>
+                                <a class="workflow-action" href="/appyhp/studio/web/" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Web ↗</a>
                             </div>
                             <div class="code-editor-shell empty" data-code-editor-shell>
                                 <div class="code-gutter" aria-hidden="true">
@@ -1823,6 +1875,21 @@
             <button type="button" class="directory-action" data-directory-context-cut>Cut</button>
             <button type="button" class="directory-action" data-directory-context-copy>Copy</button>
             <button type="button" class="directory-action" data-directory-context-paste>Paste</button>
+            <button type="button" class="directory-action directory-delete-action" data-directory-context-delete>Delete</button>
+        </div>
+    </div>
+
+    <div class="studio-modal" data-file-info-modal aria-hidden="true">
+        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="file-info-title">
+            <div class="studio-modal-header"><strong id="file-info-title">File information</strong><button type="button" class="workflow-action" data-file-info-close>Close</button></div>
+            <div class="studio-modal-body"><div data-file-info-body></div><button type="button" class="workflow-action ai-primary" data-file-info-ai>Ask AI</button><div class="studio-modal-ai-result" data-file-info-ai-result></div></div>
+        </div>
+    </div>
+    <div class="studio-modal" data-file-notes-modal aria-hidden="true">
+        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="file-notes-title">
+            <div class="studio-modal-header"><strong id="file-notes-title">File notes</strong><button type="button" class="workflow-action" data-file-notes-close>Close</button></div>
+            <div class="studio-modal-body"><textarea data-file-notes-input placeholder="Describe what this file does..."></textarea></div>
+            <div class="studio-modal-actions"><span class="editor-status" data-file-notes-status></span><button type="button" class="workflow-action ai-primary" data-file-notes-save>Save notes</button></div>
         </div>
     </div>
 
@@ -1854,6 +1921,9 @@
             var directoryTree = shell.querySelector('[data-directory-tree]');
             var directoryStatus = shell.querySelector('[data-directory-status]');
             var editorPath = shell.querySelector('[data-editor-path]');
+            var editorName = shell.querySelector('[data-editor-name]');
+            var editorInfoButton = shell.querySelector('[data-editor-info]');
+            var editorNotesButton = shell.querySelector('[data-editor-notes]');
             var editorStatus = shell.querySelector('[data-editor-status]');
             var codeEditorShell = shell.querySelector('[data-code-editor-shell]');
             var codeHighlight = shell.querySelector('[data-code-highlight] code');
@@ -1911,9 +1981,17 @@
             var directoryContextCut = document.querySelector('[data-directory-context-cut]');
             var directoryContextCopy = document.querySelector('[data-directory-context-copy]');
             var directoryContextPaste = document.querySelector('[data-directory-context-paste]');
+            var directoryContextDelete = document.querySelector('[data-directory-context-delete]');
             var workflowDragFrame = null;
             var directoryContextItem = null;
             var directoryClipboardItem = null;
+            var fileInfoModal = document.querySelector('[data-file-info-modal]');
+            var fileInfoBody = document.querySelector('[data-file-info-body]');
+            var fileInfoAiButton = document.querySelector('[data-file-info-ai]');
+            var fileInfoAiResult = document.querySelector('[data-file-info-ai-result]');
+            var fileNotesModal = document.querySelector('[data-file-notes-modal]');
+            var fileNotesInput = document.querySelector('[data-file-notes-input]');
+            var fileNotesStatus = document.querySelector('[data-file-notes-status]');
 
             function setSidebarVisible(visible) {
                 sidebarVisible = visible;
@@ -2885,9 +2963,11 @@
                     state.saving = true;
                     notify();
 
-                    savePromise = postJson(workflowUrl(), {
-                        workflows: payloadWorkflows
-                    }, 'PUT').then(function (payload) {
+                    savePromise = publishGeneratedFiles(payloadWorkflows).then(function () {
+                        return postJson(workflowUrl(), {
+                            workflows: payloadWorkflows
+                        }, 'PUT');
+                    }).then(function (payload) {
                         if (revision === savedRevision) {
                             state.workflows = (payload.workflows || state.workflows).map(normalizeWorkflow);
                             state.dirty = false;
@@ -3925,11 +4005,17 @@
                     } else {
                         patch.config = {};
                         patch.config[field.key] = control.value;
+                        if (field.key === 'filename') {
+                            patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
+                        }
                         var before = defaultModuleTarget(current.type, current.config, workflowFrontend());
                         var after = defaultModuleTarget(current.type, Object.assign({}, current.config, patch.config), workflowFrontend());
                         if (['class', 'path', 'page', 'name'].includes(field.key)) {
                             if (current.config.folder === before.folder) patch.config.folder = after.folder;
-                            if (current.config.filename === before.filename) patch.config.filename = after.filename;
+                            if (current.config.filename === before.filename) {
+                                patch.config.filename = after.filename;
+                                patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
+                            }
                             if (['table', 'migration'].includes(current.type)) {
                                 var previousSuffix = before.filename.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
                                 var nextSuffix = after.filename.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
@@ -4158,6 +4244,34 @@
                 });
             }
 
+            function deleteDirectoryContextItem() {
+                if (!directoryContextItem || !directoryContextItem.path) return;
+                var item = directoryContextItem;
+                var message = item.type === 'directory'
+                    ? 'Delete folder "' + item.path + '" and everything inside it?'
+                    : 'Delete file "' + item.path + '"?';
+                if (!window.confirm(message)) return;
+
+                setDirectoryStatus('Deleting');
+                postJson(directoryUrl('/item'), { path: item.path }, 'DELETE').then(function () {
+                    var parentPath = parentPathOf(item.path);
+                    if (selectedFilePath === item.path || (item.type === 'directory' && selectedFilePath.indexOf(item.path + '/') === 0)) {
+                        selectedFilePath = '';
+                        editorPath.textContent = '';
+                        editorName.value = '';
+                        editorName.disabled = true;
+                        fileEditor.value = '';
+                        fileEditor.disabled = true;
+                        fileDirty = false;
+                        updateCodeEditor();
+                    }
+                    closeDirectoryContextMenu();
+                    return loadDirectory(parentPath).then(function () { setDirectoryStatus('Deleted'); });
+                }).catch(function (error) {
+                    setDirectoryStatus(error.message);
+                });
+            }
+
             function loadDirectories() {
                 if (directoriesLoaded) {
                     return;
@@ -4276,6 +4390,8 @@
                         selectedFilePath = payload.path;
                         selectedLanguage = detectLanguage(payload.path);
                         editorPath.textContent = payload.path;
+                        editorName.value = payload.name || path.split('/').pop();
+                        editorName.disabled = false;
                         fileEditor.value = payload.content || '';
                         fileEditor.disabled = false;
                         updateCodeEditor();
@@ -4295,10 +4411,25 @@
 
                 setEditorStatus('Saving');
 
-                return postJson(directoryUrl('/file'), {
-                    path: selectedFilePath,
-                    content: fileEditor.value
-                }, 'PUT').then(function () {
+                var nextName = editorName.value.trim();
+                var rename = nextName && nextName !== selectedFilePath.split('/').pop()
+                    ? postJson(directoryUrl('/rename'), { path: selectedFilePath, name: nextName })
+                    : Promise.resolve({ path: selectedFilePath });
+
+                return rename.then(function (renamed) {
+                    var oldPath = selectedFilePath;
+                    selectedFilePath = renamed.path;
+                    editorPath.textContent = selectedFilePath;
+                    editorName.value = selectedFilePath.split('/').pop();
+                    if (oldPath !== selectedFilePath) {
+                        selectFile(selectedFilePath);
+                        loadDirectory(parentPathOf(oldPath));
+                    }
+                    return postJson(directoryUrl('/file'), {
+                        path: selectedFilePath,
+                        content: fileEditor.value
+                    }, 'PUT');
+                }).then(function () {
                     fileDirty = false;
                     updateManualSaveState();
                     setEditorStatus('Saved');
@@ -4326,10 +4457,87 @@
                 fileDirty = true;
                 updateCodeEditor();
                 updateManualSaveState();
+                syncEditedFileToModules();
 
                 if (appyhpStore.getState().autosave) {
                     scheduleFileAutosave();
                 }
+            }
+
+            function syncEditedFileToModules() {
+                var workflow = workflowStore.getActiveWorkflow();
+                if (!workflow) return;
+                workflow.modules.forEach(function (module) {
+                    var config = module.config || {};
+                    var path = [config.folder, config.filename].filter(Boolean).join('/');
+                    if (path !== selectedFilePath || (config.ai && config.ai.code === fileEditor.value)) return;
+                    workflowStore.updateModule(module.id, {
+                        config: { ai: Object.assign({}, config.ai || {}, { code: fileEditor.value, path: path, editedAt: new Date().toISOString() }) }
+                    }, { historyGroup: 'file:' + selectedFilePath });
+                });
+            }
+
+            function closeStudioModal(modal) {
+                modal.classList.remove('active');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+
+            function openFileInfo() {
+                fileInfoModal.classList.add('active');
+                fileInfoModal.setAttribute('aria-hidden', 'false');
+                fileInfoAiResult.textContent = '';
+                fileInfoAiButton.disabled = false;
+                fileInfoAiButton.textContent = 'Ask AI';
+                if (!selectedFilePath) {
+                    fileInfoBody.textContent = 'Select a file from the Directories panel to view what it is used for.';
+                    return;
+                }
+                var description = 'Text source file in the project. Its behavior is defined by the code shown in the editor.';
+                var lower = selectedFilePath.toLowerCase();
+                if (lower.includes('/controllers/')) description = 'Laravel controller: receives requests and coordinates application actions.';
+                else if (lower.includes('/models/')) description = 'Laravel Eloquent model: represents persisted data and relationships.';
+                else if (lower.includes('/routes/')) description = 'Laravel route file: maps URLs and HTTP methods to application handlers.';
+                else if (lower.includes('/migrations/')) description = 'Laravel migration: describes a database schema change.';
+                else if (lower.includes('/resources/views/')) description = 'View template: renders user-facing HTML or a page fragment.';
+                fileInfoBody.textContent = description;
+            }
+
+            function askAiAboutFile() {
+                if (!selectedFilePath) {
+                    fileInfoAiResult.textContent = 'Select a file first.';
+                    return;
+                }
+                fileInfoAiButton.disabled = true;
+                fileInfoAiButton.textContent = 'Asking AI...';
+                fileInfoAiResult.textContent = 'Reading the file and asking AI...';
+                requestJson(aiUrl('explain-file'), {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: selectedFilePath })
+                }).then(function (payload) {
+                    fileInfoAiResult.textContent = payload.explanation || 'AI did not return an explanation.';
+                }).catch(function (error) {
+                    fileInfoAiResult.textContent = error.message;
+                }).finally(function () {
+                    fileInfoAiButton.disabled = false;
+                    fileInfoAiButton.textContent = 'Ask AI';
+                });
+            }
+
+            function openFileNotes() {
+                fileNotesModal.classList.add('active');
+                fileNotesModal.setAttribute('aria-hidden', 'false');
+                if (!selectedFilePath) {
+                    fileNotesInput.value = '';
+                    fileNotesStatus.textContent = 'Select a file before saving notes.';
+                    return;
+                }
+                fileNotesStatus.textContent = 'Loading...';
+                requestJson(directoryUrl('/metadata', { path: selectedFilePath })).then(function (payload) {
+                    fileNotesInput.value = payload.notes || '';
+                    fileNotesStatus.textContent = '';
+                    fileNotesInput.focus();
+                }).catch(function (error) { fileNotesStatus.textContent = error.message; });
             }
 
             function handleEditorKeydown(event) {
@@ -4447,6 +4655,7 @@
                 setDirectoryClipboard('copy');
             });
             directoryContextPaste.addEventListener('click', pasteDirectoryClipboard);
+            directoryContextDelete.addEventListener('click', deleteDirectoryContextItem);
             directoryContextName.addEventListener('keydown', function (event) {
                 if (event.key === 'Enter') {
                     createDirectoryContextItem('file');
@@ -4466,6 +4675,32 @@
             fileEditor.addEventListener('scroll', syncCodeEditorScroll);
             fileEditor.addEventListener('keydown', handleEditorKeydown);
             fileEditor.addEventListener('input', handleFileInput);
+            editorName.addEventListener('input', function () {
+                if (!selectedFilePath) return;
+                fileDirty = true;
+                updateManualSaveState();
+                if (appyhpStore.getState().autosave) scheduleFileAutosave();
+            });
+            editorInfoButton.addEventListener('click', openFileInfo);
+            fileInfoAiButton.addEventListener('click', askAiAboutFile);
+            editorNotesButton.addEventListener('click', openFileNotes);
+            document.querySelector('[data-file-info-close]').addEventListener('click', function () { closeStudioModal(fileInfoModal); });
+            document.querySelector('[data-file-notes-close]').addEventListener('click', function () { closeStudioModal(fileNotesModal); });
+            document.querySelector('[data-file-notes-save]').addEventListener('click', function () {
+                if (!selectedFilePath) {
+                    fileNotesStatus.textContent = 'Select a file before saving notes.';
+                    return;
+                }
+                fileNotesStatus.textContent = 'Saving...';
+                postJson(directoryUrl('/metadata'), { path: selectedFilePath, notes: fileNotesInput.value }, 'PUT')
+                    .then(function () { fileNotesStatus.textContent = 'Notes saved.'; })
+                    .catch(function (error) { fileNotesStatus.textContent = error.message; });
+            });
+            [fileInfoModal, fileNotesModal].forEach(function (modal) {
+                modal.addEventListener('click', function (event) {
+                    if (event.target === modal) closeStudioModal(modal);
+                });
+            });
 
             window.addEventListener('storage', function (event) {
                 if (event.key === 'theme') {

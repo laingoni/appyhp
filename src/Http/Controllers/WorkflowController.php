@@ -2,11 +2,14 @@
 
 namespace Alliswell\Appyhp\Http\Controllers;
 
+use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class WorkflowController
 {
+    public function __construct(private RuntimeStorage $runtime) {}
+
     public function index(): JsonResponse
     {
         $workflows = $this->readWorkflows();
@@ -154,11 +157,7 @@ class WorkflowController
      */
     private function writeWorkflows(array $workflows): void
     {
-        $directory = dirname($this->workflowPath());
-
-        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-            abort(500, 'Unable to create Appyhp workflow directory.');
-        }
+        $this->runtime->ensure();
 
         $encoded = json_encode([
             'workflows' => $workflows,
@@ -259,6 +258,6 @@ class WorkflowController
 
     private function workflowPath(): string
     {
-        return storage_path('app/appyhp/workflows.json');
+        return $this->runtime->path('workflows.json');
     }
 }

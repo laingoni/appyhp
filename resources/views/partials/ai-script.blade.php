@@ -107,6 +107,31 @@ function workflowFingerprint(workflow) {
     return (hash >>> 0).toString(16) + ':' + value.length;
 }
 
+async function publishGeneratedFiles(workflows) {
+    var pending = [];
+    (workflows || []).forEach(function (workflow) {
+        (workflow.modules || []).forEach(function (module) {
+            var config = module.config || {};
+            var path = [config.folder, config.filename].filter(Boolean).join('/');
+            if (!path) return;
+            var code = config.ai && config.ai.code;
+            var publish = Promise.resolve();
+            var previousPath = config.previousPath || (config.ai && config.ai.path !== path ? config.ai.path : '');
+            if (previousPath && previousPath !== path) {
+                publish = postJson(directoryUrl('/rename'), { path: previousPath, name: config.filename, allowMissing: true });
+            }
+            pending.push(publish.then(function () {
+                return postJson(directoryUrl('/file'), {
+                    path: path,
+                    content: code || '',
+                    createOnly: !code
+                }, 'PUT');
+            }));
+        });
+    });
+    await Promise.all(pending);
+}
+
 function loadAiSettings() {
     return requestJson(aiUrl('settings')).then(function (payload) {
         aiSettings = payload.settings;

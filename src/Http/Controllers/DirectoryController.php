@@ -2,12 +2,15 @@
 
 namespace Alliswell\Appyhp\Http\Controllers;
 
+use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class DirectoryController
 {
+    public function __construct(private RuntimeStorage $runtime) {}
+
     private const MAX_FILE_BYTES = 1048576;
 
     /**
@@ -101,15 +104,19 @@ class DirectoryController
     public function update(Request $request): JsonResponse
     {
         $relativePath = $this->cleanRelativePath((string) $request->input('path', ''));
-        $file = $this->resolveExistingPath($relativePath);
+        abort_if($relativePath === '' || str_ends_with($relativePath, '/'), 422, 'Choose a filename.');
+        $file = $this->basePath() . DIRECTORY_SEPARATOR . $relativePath;
+        $parent = $this->resolveExistingPath($this->parentRelativePath($relativePath));
+        $this->assertInsideBase($file);
 
-        if (! is_file($file)) {
-            abort(404);
+        if (file_exists($file) && ! is_file($file)) {
+            abort(422, 'The target is a folder. Choose a filename.');
         }
 
         $content = (string) $request->input('content', '');
 
-        if (file_put_contents($file, $content, LOCK_EX) === false) {
+        $createOnly = (bool) $request->input('createOnly', false);
+        if ((! $createOnly || ! file_exists($file)) && file_put_contents($file, $content, LOCK_EX) === false) {
             abort(500, 'Unable to save file.');
         }
 
@@ -117,6 +124,61 @@ class DirectoryController
             'path' => $relativePath,
             'saved' => true,
         ]);
+    }
+
+    public function rename(Request $request): JsonResponse
+    {
+        $sourceRelativePath = $this->cleanRelativePath((string) $request->input('path', ''));
+        $source = $this->basePath() . DIRECTORY_SEPARATOR . $sourceRelativePath;
+        if (! file_exists($source) && (bool) $request->input('allowMissing', false)) {
+            return response()->json(['path' => $sourceRelativePath, 'saved' => true]);
+        }
+        $source = $this->resolveExistingPath($sourceRelativePath);
+        abort_unless(is_file($source), 422, 'Only files can be renamed here.');
+        [, $name] = $this->validatedParentAndName($request->merge([
+            'parent' => $this->parentRelativePath($sourceRelativePath),
+        ]));
+        $target = $this->targetPath(dirname($source), $name);
+
+        if ($target !== $source && file_exists($target)) {
+            abort(409, 'A file or folder already exists with that name.');
+        }
+
+        if ($target !== $source && ! rename($source, $target)) {
+            abort(500, 'Unable to rename file.');
+        }
+
+        $this->renameMetadata($sourceRelativePath, $this->relativeFromAbsolute($target));
+
+        return response()->json(array_merge($this->pathPayload($target), ['saved' => true]));
+    }
+
+    public function metadata(Request $request): JsonResponse
+    {
+        $path = $this->cleanRelativePath((string) $request->query('path', ''));
+        $this->resolveExistingPath($path);
+
+        return response()->json(['path' => $path, 'notes' => $this->readMetadata()[$path]['notes'] ?? '']);
+    }
+
+    public function updateMetadata(Request $request): JsonResponse
+    {
+        $request->validate([
+            'path' => ['required', 'string', 'max:700'],
+            'notes' => ['nullable', 'string', 'max:20000'],
+        ]);
+        $path = $this->cleanRelativePath((string) $request->input('path', ''));
+        $this->resolveExistingPath($path);
+        $notes = trim((string) $request->input('notes', ''));
+        $metadata = $this->readMetadata();
+        if ($notes === '') {
+            unset($metadata[$path]);
+        } else {
+            $metadata[$path] = ['notes' => $notes];
+        }
+        $this->writeMetadata($metadata);
+
+        return response()->json(['path' => $path, 'notes' => $notes, 'saved' => true]);
     }
 
     public function transfer(Request $request): JsonResponse
@@ -162,6 +224,31 @@ class DirectoryController
         }
 
         return response()->json($this->pathPayload($target), 201);
+    }
+
+    public function destroy(Request $request): JsonResponse
+    {
+        $relativePath = $this->cleanRelativePath((string) $request->input('path', ''));
+        abort_if($relativePath === '', 422, 'The project root cannot be deleted.');
+        $candidate = $this->basePath() . DIRECTORY_SEPARATOR . $relativePath;
+        abort_if(is_link($candidate), 422, 'Symbolic links cannot be deleted from Appyhp Studio.');
+        $target = $this->resolveExistingPath($relativePath);
+
+        if (is_dir($target)) {
+            $this->deleteDirectory($target);
+        } elseif (! unlink($target)) {
+            abort(500, 'Unable to delete file.');
+        }
+
+        $metadata = $this->readMetadata();
+        foreach (array_keys($metadata) as $path) {
+            if ($path === $relativePath || Str::startsWith($path, $relativePath . '/')) {
+                unset($metadata[$path]);
+            }
+        }
+        $this->writeMetadata($metadata);
+
+        return response()->json(['path' => $relativePath, 'deleted' => true]);
     }
 
     /**
@@ -274,6 +361,31 @@ class DirectoryController
         }
     }
 
+    private function deleteDirectory(string $directory): void
+    {
+        $items = scandir($directory);
+        if ($items === false) {
+            abort(500, 'Unable to read folder.');
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $path = $directory . DIRECTORY_SEPARATOR . $item;
+            if (is_dir($path) && ! is_link($path)) {
+                $this->deleteDirectory($path);
+            } elseif (! unlink($path)) {
+                abort(500, 'Unable to delete folder contents.');
+            }
+        }
+
+        if (! rmdir($directory)) {
+            abort(500, 'Unable to delete folder.');
+        }
+    }
+
     /**
      * @return array<string, string>
      */
@@ -330,6 +442,41 @@ class DirectoryController
         $normalizedPath = str_replace('\\', '/', $absolutePath);
 
         return trim(Str::after($normalizedPath, $basePath), '/');
+    }
+
+    private function parentRelativePath(string $path): string
+    {
+        return trim(str_replace('\\', '/', dirname($path)), '. /');
+    }
+
+    private function metadataPath(): string
+    {
+        return $this->runtime->path('directory-metadata.json');
+    }
+
+    private function readMetadata(): array
+    {
+        $contents = @file_get_contents($this->metadataPath());
+        $decoded = $contents ? json_decode($contents, true) : [];
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function writeMetadata(array $metadata): void
+    {
+        $this->runtime->ensure();
+        if (file_put_contents($this->metadataPath(), json_encode($metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL, LOCK_EX) === false) {
+            abort(500, 'Unable to save file notes.');
+        }
+    }
+
+    private function renameMetadata(string $oldPath, string $newPath): void
+    {
+        $metadata = $this->readMetadata();
+        if (isset($metadata[$oldPath])) {
+            $metadata[$newPath] = $metadata[$oldPath];
+            unset($metadata[$oldPath]);
+            $this->writeMetadata($metadata);
+        }
     }
 
     private function basePath(): string
