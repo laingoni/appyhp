@@ -1,6 +1,6 @@
 {
     "name": "alliswell/appyhp",
-    "description": "An intelligent visual application builder for Laravel, combining visual workflow with AI-powered tools for low-code development",
+    "description": "An intelligent visual development environment for Laravel that maps application architecture and uses AI to generate real source code.",
     "type": "library",
     "license": "MIT",
     "authors": [
