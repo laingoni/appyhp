@@ -58,6 +58,9 @@ try {
     }));
     assert.ok(Math.abs(moduleEditorWidths.panel - moduleEditorWidths.body) < 2, 'The full-screen module body must not have large side margins');
     const prompt = page.getByLabel('What should this module do?', { exact: true });
+    assert.equal(await prompt.locator('xpath=ancestor::section[contains(@class, "shared-text-editor")]').count(), 1);
+    assert.equal(await page.locator('[data-ai-prompt] .shared-text-editor .code-gutter').count(), 0);
+    assert.equal(await page.locator('[data-ai-prompt] [data-shared-editor-language]').textContent(), 'Markdown');
     await page.getByRole('button', { name: 'Text Editor', exact: true }).click();
     await page.locator('[data-module-text-editor]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-ai-generate]').count(), 0, 'The text editor must replace the module configuration view');
@@ -72,6 +75,9 @@ try {
     assert.equal(await prompt.inputValue(), 'Create customers with name and unique email.');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Schema::create'));
     await page.getByText('Draft ready.', { exact: true }).waitFor();
+    assert.equal(await page.locator('[data-ai-code]').locator('xpath=ancestor::section[contains(@class, "shared-text-editor")]').count(), 1);
+    assert.equal(await page.locator('[data-ai-code]').locator('xpath=ancestor::section[contains(@class, "shared-text-editor")]').locator('.code-gutter').count(), 0);
+    assert.ok(await page.locator('[data-ai-code]').locator('xpath=ancestor::section[contains(@class, "shared-text-editor")]').locator('.token-keyword').count());
     assert.equal(await page.locator('[data-ai-table] tbody tr').count(), 3);
     assert.equal(await prompt.inputValue(), 'Create customers with name and unique email.');
     assert.equal(await page.locator('[data-ai-write]').isEnabled(), true);
@@ -142,14 +148,12 @@ try {
     await page.locator('[data-ai-message]').filter({ hasText: 'Written to routes/web.php.' }).waitFor();
     assert.match(await readFile(join(project, 'routes/web.php'), 'utf8'), /WEB_ROUTE_FILE_EDITED/);
     assert.match(await readFile(join(project, 'routes/api.php'), 'utf8'), /API_ROUTE_FILE/);
-    await page.getByText('Laravel configuration', { exact: true }).click();
-    await page.getByLabel('URI', { exact: true }).fill('/customers');
-    await page.getByLabel('URI', { exact: true }).press('Tab');
+    assert.equal(await page.getByText('Laravel configuration', { exact: true }).count(), 0);
     await page.locator('[data-ai-connections] .ai-connection').first().click();
     await prompt.fill('Return the customers for the connected route.');
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     const context = JSON.parse(await readFile(join(project, 'last-ai-context.json'), 'utf8'));
-    assert.equal(context.workflow.modules.find((module) => module.type === 'route').config.uri, '/customers');
+    assert.equal(context.workflow.modules.find((module) => module.type === 'route').config.uri, '/');
     assert.ok(context.workflow.edges.length > 0);
 
     await prompt.fill('request tax rules and implement customer totals');
@@ -176,13 +180,32 @@ try {
     await prompt.fill('Show an Inertia users page.');
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     assert.match(await page.getByLabel('Filename', { exact: true }).inputValue(), /\.vue$/);
-    await page.getByText('Laravel configuration', { exact: true }).click();
-    for (const [framework, extension, adapter] of [['react', 'jsx', '@inertiajs/react'], ['svelte', 'svelte', '@inertiajs/svelte'], ['vue', 'vue', '@inertiajs/vue3']]) {
-        await page.getByLabel('Framework', { exact: true }).selectOption(framework);
-        await page.getByText('Draft ready.', { exact: true }).waitFor();
-        assert.ok((await page.getByLabel('Filename', { exact: true }).inputValue()).endsWith(`.${extension}`));
-        assert.ok((await page.locator('[data-ai-code]').inputValue()).includes(adapter));
+    assert.ok((await page.locator('[data-ai-code]').inputValue()).includes('@inertiajs/vue3'));
+
+    const inertiaPath = await page.getByLabel('Folder', { exact: true }).inputValue();
+    const inertiaOriginalName = await page.getByLabel('Filename', { exact: true }).inputValue();
+    await page.locator('[data-ai-close]').click();
+    await page.locator('[data-panel-switcher]').click();
+    for (const path of ['resources', 'resources/js', 'resources/js/Pages', inertiaPath]) {
+        const entry = page.locator(`.tree-entry[title="${path}"]`);
+        await entry.waitFor();
+        await entry.click();
     }
+    await page.locator(`.tree-entry[title="${inertiaPath}/${inertiaOriginalName}"]`).waitFor();
+    await page.locator(`.tree-entry[title="${inertiaPath}/${inertiaOriginalName}"]`).click();
+    assert.equal(await page.locator('[data-code-editor-shell] [data-shared-editor-language]').textContent(), 'VUE');
+    assert.ok(await page.locator('[data-code-editor-shell] .token-tag').count());
+    await page.locator('[data-panel-switcher]').click();
+    await page.locator('.module-node[data-type="inertia-page"] .module-node-label').click();
+    await page.getByLabel('Filename', { exact: true }).fill('Renamed.vue');
+    await page.getByLabel('Filename', { exact: true }).press('Tab');
+    await page.waitForFunction(() => !document.querySelector('[data-manual-save]').classList.contains('dirty'));
+    await page.locator('[data-ai-close]').click();
+    await page.locator('[data-panel-switcher]').click();
+    await page.locator(`.tree-entry[title="${inertiaPath}/Renamed.vue"]`).waitFor();
+    assert.equal(await page.locator(`.tree-entry[title="${inertiaPath}/${inertiaOriginalName}"]`).count(), 0);
+    assert.ok((await readFile(join(project, inertiaPath, 'Renamed.vue'), 'utf8')).includes('@inertiajs/vue3'));
+    await page.locator('[data-panel-switcher]').click();
 
     await page.reload();
     await page.waitForFunction(() => document.querySelector('[data-autosave]').checked);
@@ -192,11 +215,16 @@ try {
     const originalModuleCode = await page.locator('[data-ai-code]').inputValue();
     const editedModuleCode = `${originalModuleCode.trimEnd()}\n// MODULE_HISTORY_EDIT\n`;
     await page.getByRole('button', { name: 'Code editor', exact: true }).click();
+    assert.equal(await page.locator('[data-module-file-editor-shell].shared-text-editor').count(), 1);
+    assert.equal(await page.locator('[data-module-file-editor-shell] [data-shared-editor-language]').textContent(), 'PHP');
+    assert.ok(await page.locator('[data-module-file-editor-shell] .token-keyword').count());
     await page.locator('[data-module-file-content]').fill(editedModuleCode);
     await page.locator('[data-module-file-back]').click();
     await page.locator('[data-panel-switcher]').click();
     await page.locator('.tree-entry[title="routes"]').click();
     await page.locator('.tree-entry[title="routes/web.php"]').click();
+    assert.equal(await page.locator('[data-code-editor-shell].shared-text-editor').count(), 1);
+    assert.equal(await page.locator('[data-code-editor-shell] [data-shared-editor-language]').textContent(), 'PHP');
     const originalDirectoryCode = await page.locator('[data-file-editor]').inputValue();
     const editedDirectoryCode = `${originalDirectoryCode.trimEnd()}\n// DIRECTORY_HISTORY_EDIT\n`;
     await page.locator('[data-file-editor]').fill(editedDirectoryCode);
@@ -214,17 +242,25 @@ try {
     await page.locator('[data-redo]').click();
     assert.equal(await page.locator('[data-file-editor]').inputValue(), editedDirectoryCode);
 
+    await page.locator('[data-editor-notes]').click();
+    await page.locator('[data-file-notes-modal].active').waitFor();
+    await page.locator('[data-file-notes-input]').fill('# Route notes\n\n**Important:** keep this route synchronized.');
+    assert.equal(await page.locator('[data-file-notes-editor-shell] .token-md-heading').textContent(), 'Route notes');
+    assert.equal(await page.locator('[data-file-notes-editor-shell] .token-md-emphasis').textContent(), '**Important:**');
+    assert.equal(await page.locator('[data-file-notes-editor-shell] .shared-text-editor-toolbar').count(), 1);
+    await page.locator('[data-file-notes-save]').click();
+    await page.getByText('Notes saved.', { exact: true }).waitFor();
+    await page.locator('[data-file-notes-close]').click();
+
     await page.locator('[data-panel-switcher]').click();
     const routeModules = page.locator('.module-node[data-type="route"] .module-node-label');
     await routeModules.first().click();
     const sharedRoutePrompt = await page.getByLabel('What should this module do?', { exact: true }).inputValue();
-    const sharedRouteUri = await page.getByLabel('URI', { exact: true }).inputValue();
     await page.locator('[data-ai-close]').click();
     await page.getByRole('button', { name: '+Route', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.module-node[data-type="route"]').length === 2);
     await routeModules.last().click();
     assert.equal(await page.getByLabel('What should this module do?', { exact: true }).inputValue(), sharedRoutePrompt);
-    assert.equal(await page.getByLabel('URI', { exact: true }).inputValue(), sharedRouteUri);
     await page.getByRole('button', { name: 'Text Editor', exact: true }).click();
     await page.locator('[data-module-text-content]').fill('Shared behavior for routes/web.php');
     await page.locator('[data-module-text-back]').click();
@@ -257,7 +293,7 @@ try {
         await page.locator('[data-ai-settings-close]').click();
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'nested file editor', 'sidebar restoration', 'draft save boundary', 'undo/redo', 'chronological cross-panel history', 'shared file module attributes', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'React', 'Svelte', 'desktop/mobile'], artifacts, project }));
+    console.log(JSON.stringify({ passed: true, checks: ['settings', 'streaming', 'cancellation', 'table schema', 'full-canvas module editor', 'nested file editor', 'sidebar restoration', 'draft save boundary', 'instant directory reflection', 'undo/redo', 'chronological cross-panel history', 'shared file module attributes', 'file permission grant/deny', 'file write', 'save/reload', 'provider failure', 'connected context', 'Vue', 'desktop/mobile'], artifacts, project }));
 } catch (error) {
     console.error(`Browser artifacts: ${artifacts}`);
     if (browser) {

@@ -118,7 +118,11 @@ class ProjectFiles
             return [];
         }
 
-        $decoded = json_decode(file_get_contents($path), true);
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return [];
+        }
+        $decoded = json_decode($contents, true);
 
         return is_array($decoded) ? $decoded : [];
     }

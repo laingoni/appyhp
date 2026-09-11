@@ -116,6 +116,7 @@ function workflowFingerprint(workflow) {
 
 async function publishGeneratedFiles(workflows) {
     var jobs = {};
+    var fileChanges = [];
     (workflows || []).forEach(function (workflow) {
         (workflow.modules || []).forEach(function (module) {
             var config = module.config || {};
@@ -135,7 +136,7 @@ async function publishGeneratedFiles(workflows) {
         var previousPath = config.previousPath || (config.ai && config.ai.path !== path ? config.ai.path : '');
         var publish = Promise.resolve();
         if (job.module.type !== 'route' && previousPath && previousPath !== path) {
-            publish = postJson(directoryUrl('/rename'), { path: previousPath, name: config.filename, allowMissing: true });
+            publish = postJson(directoryUrl('/relocate'), { source: previousPath, target: path, allowMissing: true });
         }
         return publish.then(function () {
             var moduleConfig = Object.assign({}, config);
@@ -157,6 +158,12 @@ async function publishGeneratedFiles(workflows) {
                 moduleConfig: moduleConfig
             }, 'PUT');
         }).then(function (response) {
+            fileChanges.push({
+                oldPath: previousPath && previousPath !== path ? previousPath : '',
+                path: path,
+                hash: response.hash || null,
+                content: shouldWrite ? result.code : null
+            });
             job.configs.forEach(function (config) {
                 delete config.previousPath;
                 if (config.ai && config.ai.path !== path) {
@@ -170,6 +177,7 @@ async function publishGeneratedFiles(workflows) {
         });
     });
     await Promise.all(pending);
+    await reflectFileSystemChanges(fileChanges);
 }
 
 function loadAiSettings() {
@@ -467,7 +475,6 @@ function renderAiModuleConfig(state) {
     if (!moduleConfigPanel.firstChild) {
         var definition = moduleDefinition(module.type);
         moduleConfigPanel.innerHTML = '<header class="module-config-header"><button type="button" class="module-editor-back" data-ai-close aria-label="Back to workflow canvas" title="Back to workflow canvas"><span aria-hidden="true">&#8249;</span><span>Back</span></button><span><span class="workflow-title" data-ai-module-title></span><span class="workflow-meta" data-ai-module-kind></span></span></header>' +
-            '<details class="ai-section"><summary>Laravel configuration</summary><div class="ai-fields" data-ai-fields></div></details>' +
             '<div data-ai-route-type></div>' +
             '<div class="module-config-body"><div data-ai-name></div><div class="ai-target-fields" data-ai-target></div><div data-ai-prompt></div>' +
             '<div class="ai-toolbar"><label class="ai-live"><input type="checkbox" data-ai-live>Live</label><button class="workflow-action" type="button" data-ai-stop hidden>Stop</button><button class="workflow-action ai-primary" type="button" data-ai-generate>Generate</button><button class="workflow-action" type="button" data-ai-setup>AI settings</button></div>' +
@@ -510,9 +517,8 @@ function renderAiModuleConfig(state) {
         promptEditorButton.dataset.aiEditPrompt = '';
         promptEditorButton.textContent = 'Text Editor';
         promptHeader.appendChild(promptEditorButton);
-        var fields = moduleConfigPanel.querySelector('[data-ai-fields]');
-        addConfigField(fields, module, { key: 'description', label: 'Description', type: 'textarea', root: true });
-        (definition.fields || []).forEach(function (field) { addConfigField(fields, module, field); });
+        mountCompactSharedTextEditor(prompt, 'markdown', 'Describe what this module should do...');
+        mountCompactSharedTextEditor(moduleConfigPanel.querySelector('[data-ai-code]'), detectLanguage([module.config.folder, module.config.filename].filter(Boolean).join('/')), 'Loading the module file...');
         moduleConfigPanel.querySelector('[data-ai-close]').addEventListener('click', closeModuleEditor);
         moduleConfigPanel.querySelector('[data-ai-generate]').addEventListener('click', function () { generateModule(); });
         moduleConfigPanel.querySelector('[data-ai-setup]').addEventListener('click', openAiSettings);
@@ -578,6 +584,8 @@ function renderAiModuleConfig(state) {
         var next = value == null ? '' : String(value);
         if (control.value !== next) control.value = next;
     });
+    var compactPrompt = moduleConfigPanel.querySelector('[data-ai-prompt] .shared-text-editor');
+    if (compactPrompt) updateSharedTextEditor(compactPrompt, compactPrompt.querySelector('[data-ai-prompt-input]'), 'markdown');
     var folderOptions = Array.from(new Set(aiProject.folders.concat([module.config.folder])));
     moduleConfigPanel.querySelector('#ai-folder-options').innerHTML = folderOptions.map(function (folder) { return '<option value="' + escapeHtml(folder) + '"></option>'; }).join('');
     var live = moduleConfigPanel.querySelector('[data-ai-live]');
@@ -620,32 +628,71 @@ function closeModuleTextEditor() {
 }
 
 function moduleEditorSurfaceMarkup(kind, ariaLabel, spellcheck) {
-    return '<div class="code-editor-shell module-embedded-editor-shell" data-module-' + kind + '-editor-shell>' +
-        '<div class="code-gutter" aria-hidden="true"><div class="code-gutter-lines" data-module-editor-gutter>1</div></div>' +
-        '<pre class="code-highlight" data-module-editor-highlight aria-hidden="true"><code></code></pre>' +
-        '<textarea class="file-editor" data-module-' + kind + '-content spellcheck="' + spellcheck + '" wrap="off" aria-label="' + ariaLabel + '"></textarea>' +
-        '</div>';
+    return sharedTextEditorMarkup(
+        'data-module-' + kind + '-editor-shell',
+        'data-module-' + kind + '-content',
+        ariaLabel,
+        spellcheck === 'true',
+        kind === 'text' ? 'Describe the module in Markdown...' : '',
+        'module-embedded-editor-shell'
+    );
 }
 
-function syncModuleEditorSurface(shell, editor) {
+function sharedTextEditorMarkup(shellAttribute, inputAttribute, ariaLabel, spellcheck, placeholder, extraClass, showGutter) {
+    var gutter = showGutter === false ? '' : '<div class="code-gutter" aria-hidden="true"><div class="code-gutter-lines" data-shared-editor-gutter data-module-editor-gutter>1</div></div>';
+    return '<section class="shared-text-editor ' + escapeHtml(extraClass || '') + (showGutter === false ? ' without-gutter' : '') + '" ' + shellAttribute + '>' +
+        '<header class="shared-text-editor-toolbar"><span class="shared-text-editor-language"><span aria-hidden="true">●</span><span data-shared-editor-language>Markdown</span></span><span data-shared-editor-stats>1 line · 0 characters</span></header>' +
+        '<div class="code-editor-shell shared-text-editor-canvas">' +
+            gutter +
+            '<pre class="code-highlight" data-shared-editor-highlight data-module-editor-highlight aria-hidden="true"><code data-placeholder="' + escapeHtml(placeholder || '') + '"></code></pre>' +
+            '<textarea class="file-editor" ' + inputAttribute + ' spellcheck="' + (spellcheck ? 'true' : 'false') + '" wrap="off" aria-label="' + escapeHtml(ariaLabel) + '" placeholder="' + escapeHtml(placeholder || '') + '"></textarea>' +
+        '</div>' +
+    '</section>';
+}
+
+function mountCompactSharedTextEditor(editor, language, placeholder) {
+    var host = document.createElement('div');
+    host.className = 'compact-shared-text-editor-host';
+    editor.parentNode.insertBefore(host, editor);
+    host.innerHTML = sharedTextEditorMarkup('data-compact-editor-shell', 'data-compact-editor-input', editor.getAttribute('aria-label') || 'Text editor', editor.spellcheck, placeholder, 'compact-shared-text-editor', false);
+    var shell = host.firstElementChild;
+    var generatedEditor = shell.querySelector('[data-compact-editor-input]');
+    editor.classList.add('file-editor');
+    if (editor.matches('[data-ai-prompt], [data-config-key="prompt"]')) editor.dataset.aiPromptInput = '';
+    generatedEditor.replaceWith(editor);
+    bindSharedTextEditor(shell, editor, language);
+    return shell;
+}
+
+function syncSharedTextEditor(shell, editor) {
     var highlight = shell.querySelector('[data-module-editor-highlight]');
     highlight.scrollTop = editor.scrollTop;
     highlight.scrollLeft = editor.scrollLeft;
-    shell.querySelector('[data-module-editor-gutter]').style.transform = 'translateY(-' + editor.scrollTop + 'px)';
+    var gutter = shell.querySelector('[data-module-editor-gutter]');
+    if (gutter) gutter.style.transform = 'translateY(-' + editor.scrollTop + 'px)';
 }
 
-function updateModuleEditorSurface(shell, editor, language) {
+function updateSharedTextEditor(shell, editor, language) {
     var value = editor.value || '';
     var lineCount = Math.max(1, value.split('\n').length);
     var lines = [];
+    var languageName = language === 'markdown' ? 'Markdown' : (language === 'plain' ? 'Plain text' : String(language || 'Plain text').toUpperCase());
     for (var index = 1; index <= lineCount; index += 1) lines.push(index);
-    shell.querySelector('[data-module-editor-gutter]').textContent = lines.join('\n');
+    shell.dataset.editorLanguage = language || 'plain';
+    var gutter = shell.querySelector('[data-module-editor-gutter]');
+    if (gutter) gutter.textContent = lines.join('\n');
     shell.querySelector('[data-module-editor-highlight] code').innerHTML = highlightCode(value, language);
-    syncModuleEditorSurface(shell, editor);
+    shell.querySelector('[data-shared-editor-language]').textContent = languageName;
+    shell.querySelector('[data-shared-editor-stats]').textContent = lineCount + (lineCount === 1 ? ' line · ' : ' lines · ') + value.length + (value.length === 1 ? ' character' : ' characters');
+    shell.classList.toggle('empty', value.length === 0);
+    syncSharedTextEditor(shell, editor);
 }
 
-function bindModuleEditorSurface(shell, editor) {
-    editor.addEventListener('scroll', function () { syncModuleEditorSurface(shell, editor); });
+function bindSharedTextEditor(shell, editor, language) {
+    editor.addEventListener('scroll', function () { syncSharedTextEditor(shell, editor); });
+    editor.addEventListener('input', function () {
+        updateSharedTextEditor(shell, editor, shell.dataset.editorLanguage || language || 'plain');
+    });
     editor.addEventListener('keydown', function (event) {
         if (event.key !== 'Tab') return;
         event.preventDefault();
@@ -653,6 +700,7 @@ function bindModuleEditorSurface(shell, editor) {
         editor.setRangeText('    ', start, editor.selectionEnd, 'end');
         editor.dispatchEvent(new Event('input', { bubbles: true }));
     });
+    updateSharedTextEditor(shell, editor, language || 'plain');
 }
 
 function renderModuleTextEditor(module) {
@@ -665,12 +713,11 @@ function renderModuleTextEditor(module) {
         moduleConfigPanel.querySelector('[data-module-text-back]').addEventListener('click', closeModuleTextEditor);
         var textShell = moduleConfigPanel.querySelector('[data-module-text-editor-shell]');
         var textEditor = moduleConfigPanel.querySelector('[data-module-text-content]');
-        bindModuleEditorSurface(textShell, textEditor);
+        bindSharedTextEditor(textShell, textEditor, 'markdown');
         textEditor.addEventListener('input', function (event) {
             var current = workflowStore.getSelectedModule();
             if (!current || current.id !== module.id) return;
             event.target.dataset.source = event.target.value;
-            updateModuleEditorSurface(textShell, event.target, 'plain');
             workflowStore.updateModule(module.id, { config: { prompt: event.target.value } }, { historyGroup: module.id + ':prompt' });
             queueModuleGeneration();
         });
@@ -682,7 +729,7 @@ function renderModuleTextEditor(module) {
         editor.dataset.source = prompt;
     }
     moduleConfigPanel.querySelector('[data-module-text-title]').textContent = module.label + ' · Markdown';
-    updateModuleEditorSurface(moduleConfigPanel.querySelector('[data-module-text-editor-shell]'), editor, 'plain');
+    updateSharedTextEditor(moduleConfigPanel.querySelector('[data-module-text-editor-shell]'), editor, 'markdown');
 }
 
 function renderModuleFileEditor(module, workflow) {
@@ -698,13 +745,13 @@ function renderModuleFileEditor(module, workflow) {
         moduleConfigPanel.querySelector('[data-module-file-back]').addEventListener('click', closeModuleFileEditor);
         var fileShell = moduleConfigPanel.querySelector('[data-module-file-editor-shell]');
         var fileEditor = moduleConfigPanel.querySelector('[data-module-file-content]');
-        bindModuleEditorSurface(fileShell, fileEditor);
+        bindSharedTextEditor(fileShell, fileEditor, 'plain');
         fileEditor.addEventListener('input', function (event) {
             var current = workflowStore.getSelectedModule();
             if (!current || current.id !== module.id) return;
             var code = event.target.value;
             event.target.dataset.source = code;
-            updateModuleEditorSurface(fileShell, event.target, detectLanguage([current.config.folder, current.config.filename].filter(Boolean).join('/')));
+            updateSharedTextEditor(fileShell, event.target, detectLanguage([current.config.folder, current.config.filename].filter(Boolean).join('/')));
             var ai = Object.assign({}, current.config.ai || {}, {
                 code: code,
                 path: [current.config.folder, current.config.filename].filter(Boolean).join('/'),
@@ -722,7 +769,7 @@ function renderModuleFileEditor(module, workflow) {
         editor.value = code;
         editor.dataset.source = code;
     }
-    updateModuleEditorSurface(moduleConfigPanel.querySelector('[data-module-file-editor-shell]'), editor, detectLanguage(path));
+    updateSharedTextEditor(moduleConfigPanel.querySelector('[data-module-file-editor-shell]'), editor, detectLanguage(path));
     moduleConfigPanel.querySelector('[data-module-file-title]').textContent = module.label;
     moduleConfigPanel.querySelector('[data-module-file-path]').textContent = path;
     var status = moduleConfigPanel.querySelector('[data-module-file-status]');
@@ -795,6 +842,11 @@ function ensureModuleSource(module, workflow) {
                 }
             }
         }, { workflowId: workflow.id, skipHistory: true });
+        return reflectFileSystemChanges([{
+            path: path,
+            hash: payload.hash,
+            content: payload.content || ''
+        }]);
     }).catch(function (error) {
         aiSourceLoads[key] = 'error';
         if (workflowStore.getSelectedModule() && workflowStore.getSelectedModule().id === module.id) {
@@ -817,12 +869,12 @@ function renderAiOutput(module, workflow) {
     var path = module.config.folder + '/' + module.config.filename;
     var codeEl = moduleConfigPanel.querySelector('[data-ai-code]');
     if (codeEl.dataset.source !== code) {
-        var frame = codeEl.parentElement;
-        var follow = frame.scrollHeight - frame.scrollTop - frame.clientHeight < 35;
+        var follow = codeEl.scrollHeight - codeEl.scrollTop - codeEl.clientHeight < 35;
         codeEl.value = code;
         codeEl.dataset.source = code;
-        if (follow && aiJob) frame.scrollTop = frame.scrollHeight;
+        if (follow && aiJob) codeEl.scrollTop = codeEl.scrollHeight;
     }
+    updateSharedTextEditor(codeEl.closest('.shared-text-editor'), codeEl, detectLanguage(path));
     var status = moduleConfigPanel.querySelector('[data-ai-message]');
     status.textContent = aiFeedback.message || (!aiSettings ? 'Loading AI settings...' : (!aiSettings.configured ? 'AI provider not configured.' : ''));
     status.dataset.error = aiFeedback.error ? 'true' : 'false';
@@ -947,8 +999,11 @@ async function writeGeneratedFile() {
             fileHistoryCurrent = captureFileHistorySnapshot();
             updateCodeEditor();
         }
-        var parent = parentPathOf(result.path);
-        if (directoryContainers[parent]) loadDirectory(parent);
+        await reflectFileSystemChanges([{
+            path: result.path,
+            hash: response.hash,
+            content: result.code
+        }]);
         aiFeedback = { message: 'Written to ' + result.path + '.', error: false };
     } catch (error) {
         aiFeedback = { message: error.message, error: true };

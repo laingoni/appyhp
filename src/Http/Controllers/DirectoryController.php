@@ -62,6 +62,9 @@ class DirectoryController
         if (str_contains($contents, "\0")) {
             abort(415, 'Binary files are not editable in Appyhp Studio.');
         }
+        if (preg_match('//u', $contents) !== 1) {
+            abort(415, 'Files must contain valid UTF-8 text to be edited in Appyhp Studio.');
+        }
 
         return response()->json([
             'path' => $relativePath,
@@ -105,6 +108,17 @@ class DirectoryController
 
     public function update(Request $request): JsonResponse
     {
+        abort_if(strlen($request->getContent()) > self::MAX_FILE_BYTES + 65536, 413, 'The file payload is too large.');
+        $request->validate([
+            'path' => ['required', 'string', 'max:700'],
+            // The host's ConvertEmptyStringsToNull middleware may normalize an
+            // intentionally empty new module before this package sees it.
+            'content' => ['present', 'nullable', 'string', 'max:' . self::MAX_FILE_BYTES],
+            'createOnly' => ['sometimes', 'boolean'],
+            'moduleType' => ['sometimes', 'string', 'max:80'],
+            'moduleConfig' => ['sometimes', 'array'],
+            'expectedHash' => ['sometimes', 'nullable', 'string', 'size:64'],
+        ]);
         $relativePath = $this->cleanRelativePath((string) $request->input('path', ''));
         abort_if($relativePath === '' || str_ends_with($relativePath, '/'), 422, 'Choose a filename.');
         $file = $this->basePath() . DIRECTORY_SEPARATOR . $relativePath;
@@ -135,6 +149,10 @@ class DirectoryController
             );
         } elseif (! $createOnly || ! file_exists($file)) {
             $this->resolveExistingPath($this->parentRelativePath($relativePath));
+            if (is_file($file)) {
+                abort_unless($request->exists('expectedHash'), 422, 'Reload the file before saving it.');
+                abort_unless(hash_file('sha256', $file) === $request->input('expectedHash'), 409, 'The file changed since it was opened. Reload it before saving.');
+            }
             if (file_put_contents($file, $content, LOCK_EX) === false) {
                 abort(500, 'Unable to save file.');
             }
@@ -173,6 +191,39 @@ class DirectoryController
         $this->renameMetadata($sourceRelativePath, $this->relativeFromAbsolute($target));
 
         return response()->json(array_merge($this->pathPayload($target), ['saved' => true]));
+    }
+
+    public function relocate(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'source' => ['required', 'string', 'max:700'],
+            'target' => ['required', 'string', 'max:700'],
+            'allowMissing' => ['sometimes', 'boolean'],
+        ]);
+        $sourceRelativePath = $this->cleanRelativePath($input['source']);
+        $targetRelativePath = $this->cleanRelativePath($input['target']);
+        abort_if($sourceRelativePath === '' || $targetRelativePath === '', 422, 'Choose source and target files.');
+
+        $sourceCandidate = $this->basePath() . DIRECTORY_SEPARATOR . $sourceRelativePath;
+        if (! file_exists($sourceCandidate) && ($input['allowMissing'] ?? false)) {
+            return response()->json(['path' => $targetRelativePath, 'saved' => true, 'moved' => false]);
+        }
+
+        $source = $this->resolveExistingPath($sourceRelativePath);
+        abort_unless(is_file($source) && ! is_link($sourceCandidate), 422, 'Only regular files can be relocated here.');
+        $parent = $this->ensureDirectoryPath($this->parentRelativePath($targetRelativePath));
+        $target = $this->targetPath($parent, basename($targetRelativePath));
+
+        if ($target !== $source && file_exists($target)) {
+            abort(409, 'A file or folder already exists at the target path.');
+        }
+        if ($target !== $source && ! rename($source, $target)) {
+            abort(500, 'Unable to relocate file.');
+        }
+
+        $this->renameMetadata($sourceRelativePath, $targetRelativePath);
+
+        return response()->json(array_merge($this->pathPayload($target), ['saved' => true, 'moved' => $target !== $source]));
     }
 
     public function metadata(Request $request): JsonResponse
@@ -240,6 +291,7 @@ class DirectoryController
                 abort(500, 'Unable to move item.');
             }
         } elseif (is_dir($source)) {
+            $this->assertDirectoryContainsNoLinks($source);
             $this->copyDirectory($source, $target);
         } elseif (! copy($source, $target)) {
             abort(500, 'Unable to copy file.');
@@ -287,12 +339,12 @@ class DirectoryController
         $children = [];
 
         foreach ($items as $item) {
-            if ($item === '.' || $item === '..' || in_array($item, $this->ignoredNames, true)) {
+            $childRelativePath = $relativePath === '' ? $item : $relativePath . '/' . $item;
+            if ($item === '.' || $item === '..' || $this->isProtectedPath($childRelativePath)) {
                 continue;
             }
 
             $absolutePath = $directory . DIRECTORY_SEPARATOR . $item;
-            $childRelativePath = $relativePath === '' ? $item : $relativePath . '/' . $item;
 
             if (is_dir($absolutePath)) {
                 $children[] = [
@@ -348,8 +400,24 @@ class DirectoryController
     {
         $target = $parent . DIRECTORY_SEPARATOR . $name;
         $this->assertInsideBase(dirname($target));
+        abort_if($this->isProtectedPath($this->relativeFromAbsolute($target)), 403, 'This path is not available in Appyhp Studio.');
 
         return $target;
+    }
+
+    private function ensureDirectoryPath(string $relativePath): string
+    {
+        $current = $this->basePath();
+        foreach (array_filter(explode('/', $relativePath)) as $part) {
+            $current .= DIRECTORY_SEPARATOR . $part;
+            abort_if(is_link($current), 422, 'File locations cannot use symbolic links.');
+            abort_if(file_exists($current) && ! is_dir($current), 422, 'A file occupies part of the target folder path.');
+            if (! file_exists($current) && ! mkdir($current, 0755)) {
+                abort(500, 'Unable to create the target folder.');
+            }
+        }
+
+        return $this->assertInsideBase($current);
     }
 
     private function copyDirectory(string $source, string $target): void
@@ -379,6 +447,26 @@ class DirectoryController
 
             if (is_file($sourceItem) && ! copy($sourceItem, $targetItem)) {
                 abort(500, 'Unable to copy file.');
+            }
+        }
+    }
+
+    private function assertDirectoryContainsNoLinks(string $directory): void
+    {
+        $items = scandir($directory);
+        if ($items === false) {
+            abort(500, 'Unable to read folder.');
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $path = $directory . DIRECTORY_SEPARATOR . $item;
+            abort_if(is_link($path), 422, 'Folders containing symbolic links cannot be copied.');
+            if (is_dir($path)) {
+                $this->assertDirectoryContainsNoLinks($path);
             }
         }
     }
@@ -451,11 +539,35 @@ class DirectoryController
             return '';
         }
 
+        if (strlen($path) > 700) {
+            abort(422, 'The project-relative path is too long.');
+        }
+
         if (Str::contains($path, ["\0"]) || collect(explode('/', $path))->contains(fn (string $part): bool => $part === '..')) {
             abort(403);
         }
+        abort_if($this->isProtectedPath($path), 403, 'This path is not available in Appyhp Studio.');
 
         return $path;
+    }
+
+    private function isProtectedPath(string $path): bool
+    {
+        $parts = explode('/', trim(str_replace('\\', '/', $path), '/'));
+        foreach ($parts as $part) {
+            if ($part === '' || str_starts_with($part, '.') || in_array($part, $this->ignoredNames, true)) {
+                return true;
+            }
+        }
+
+        $normalized = strtolower(implode('/', $parts));
+        if ($normalized === 'storage' || str_starts_with($normalized, 'storage/')
+            || $normalized === 'bootstrap/cache' || str_starts_with($normalized, 'bootstrap/cache/')) {
+            return true;
+        }
+
+        return in_array(strtolower(basename($normalized)), ['auth.json', 'credentials.json'], true)
+            || preg_match('/\.(?:key|pem|p12|pfx)$/i', $normalized) === 1;
     }
 
     private function relativeFromAbsolute(string $absolutePath): string
@@ -485,10 +597,7 @@ class DirectoryController
 
     private function writeMetadata(array $metadata): void
     {
-        $this->runtime->ensure();
-        if (file_put_contents($this->metadataPath(), json_encode($metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL, LOCK_EX) === false) {
-            abort(500, 'Unable to save file notes.');
-        }
+        $this->runtime->writeJson('directory-metadata.json', $metadata);
     }
 
     private function renameMetadata(string $oldPath, string $newPath): void

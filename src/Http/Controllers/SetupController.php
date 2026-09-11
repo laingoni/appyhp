@@ -5,6 +5,7 @@ namespace Alliswell\Appyhp\Http\Controllers;
 use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SetupController
 {
@@ -28,12 +29,12 @@ class SetupController
 
     public function update(Request $request): JsonResponse
     {
-        $setup = array_replace_recursive($this->readSetup(), $request->all());
-
-        if (isset($setup['activePanel']) && ! in_array($setup['activePanel'], $this->allowedPanels, true)) {
-            $setup['activePanel'] = 'workflows';
-        }
-        $setup['sidebarVisible'] = filter_var($setup['sidebarVisible'] ?? true, FILTER_VALIDATE_BOOL);
+        $values = $request->validate([
+            'activePanel' => ['sometimes', 'string', Rule::in($this->allowedPanels)],
+            'autosave' => ['sometimes', 'boolean'],
+            'sidebarVisible' => ['sometimes', 'boolean'],
+        ]);
+        $setup = array_replace($this->readSetup(), $values);
 
         $this->writeSetup($setup);
 
@@ -69,6 +70,7 @@ class SetupController
             $setup['activePanel'] = 'workflows';
         }
         $setup['sidebarVisible'] = filter_var($setup['sidebarVisible'] ?? true, FILTER_VALIDATE_BOOL);
+        $setup['autosave'] = filter_var($setup['autosave'] ?? false, FILTER_VALIDATE_BOOL);
 
         return $setup;
     }
@@ -78,13 +80,7 @@ class SetupController
      */
     private function writeSetup(array $setup): void
     {
-        $this->runtime->ensure();
-
-        $encoded = json_encode($setup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        if ($encoded === false || file_put_contents($this->setupPath(), $encoded . PHP_EOL, LOCK_EX) === false) {
-            abort(500, 'Unable to write Appyhp setup file.');
-        }
+        $this->runtime->writeJson('setup.json', $setup);
     }
 
     /**

@@ -34,8 +34,13 @@ class AiTest extends TestCase
             ->assertSee('data-module-text-editor', false)
             ->assertSee('data-module-text-editor-shell', false)
             ->assertSee('data-module-text-back', false)
+            ->assertSee('data-file-notes-editor-host', false)
+            ->assertSee('sharedTextEditorMarkup', false)
+            ->assertSee('highlightStylesheet', false)
+            ->assertSee('highlightComponent', false)
             ->assertSee('data-module-editor-highlight', false)
             ->assertSee('data-module-editor-gutter', false)
+            ->assertDontSee('Laravel configuration', false)
             ->assertSee('href="/appyhp/studio/web/index.html"', false)
             ->assertSee('Docs ↗', false);
         $this->getJson('/appyhp/api/ai/settings')->assertOk()->assertJsonPath('settings.configured', false);

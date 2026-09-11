@@ -2,6 +2,17 @@
 
 return [
     'mode' => env('APPY_MODE'),
+    // Studio can read and modify source files. Keep it local unless access is
+    // deliberately opened to a trusted address and protected by host middleware.
+    'allowed_ips' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('APPYHP_ALLOWED_IPS', '127.0.0.1,::1'))
+    ))),
+    'access_token' => env('APPYHP_ACCESS_TOKEN', ''),
+    'middleware' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('APPYHP_MIDDLEWARE', ''))
+    ))),
     // Package-local context is ignored by git and created lazily for development installs.
     'runtime_path' => env('APPYHP_RUNTIME_PATH', dirname(__DIR__) . DIRECTORY_SEPARATOR . '.appyhp'),
 

@@ -114,6 +114,22 @@ class ModuleFileGenerationTest extends TestCase
         }
     }
 
+    public function test_module_files_can_be_relocated_across_directories(): void
+    {
+        $source = base_path('app/Http/Controllers/AccountController.php');
+        file_put_contents($source, '<?php // account');
+
+        $this->postJson('/appyhp/api/directories/relocate', [
+            'source' => 'app/Http/Controllers/AccountController.php',
+            'target' => 'app/Domain/Accounts/RenamedAccount.php',
+        ])->assertOk()
+            ->assertJsonPath('path', 'app/Domain/Accounts/RenamedAccount.php')
+            ->assertJsonPath('moved', true);
+
+        $this->assertFileDoesNotExist($source);
+        $this->assertSame('<?php // account', file_get_contents(base_path('app/Domain/Accounts/RenamedAccount.php')));
+    }
+
     /**
      * @param array<string, string> $config
      */

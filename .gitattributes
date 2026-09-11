@@ -3,3 +3,7 @@
 /phpunit.xml.dist export-ignore
 /.github export-ignore
 /.gitignore export-ignore
+/.appyhp export-ignore
+/.env export-ignore
+/composer.lock export-ignore
+/vendor export-ignore

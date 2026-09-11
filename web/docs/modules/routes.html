@@ -34,7 +34,7 @@
         <p>The connections become useful context for AI. When you generate code, AppyHP can see the selected route, its neighboring modules, their configuration, the workflow description, the project structure and the existing target source.</p>
 
         <h2>Choose the route file</h2>
-        <p>Open a Route module and use the <strong>Route file</strong> dropdown directly below the Laravel configuration accordion. Choose the Laravel route group that should contain the route:</p>
+        <p>Open a Route module and use the <strong>Route file</strong> dropdown at the top of the module editor. Choose the Laravel route group that should contain the route:</p>
         <ul>
             <li><strong>web</strong> publishes to <code>routes/web.php</code> for browser routes, sessions and web middleware.</li>
             <li><strong>api</strong> publishes to <code>routes/api.php</code> for API endpoints and API middleware.</li>
@@ -43,26 +43,15 @@
         </ul>
         <p>The selector controls the target filename. Route modules use the shared <code>routes</code> directory, and their filenames are managed by the selected route type so the module cannot accidentally drift away from its Laravel route file.</p>
 
-        <h2>Laravel configuration</h2>
-        <p>Expand the bordered <strong>Laravel configuration</strong> accordion to edit the route’s framework details:</p>
-        <ul>
-            <li><strong>Method</strong> — choose the HTTP method, such as GET, POST, PUT, PATCH or DELETE.</li>
-            <li><strong>URI</strong> — define the route path, including parameters such as <code>/users/{user}</code>.</li>
-            <li><strong>Middleware</strong> — list middleware aliases or classes that protect or modify the request.</li>
-            <li><strong>Route name</strong> — give the route a stable name used by redirects, links and controllers.</li>
-            <li><strong>Controller action</strong> — describe the action that handles the request, such as <code>index</code> or <code>store</code>.</li>
-        </ul>
-        <p>Keep these fields aligned with the connected Controller and Request modules. That gives AI a clear contract to reconcile when it generates or revises the route file.</p>
-
         <h2>Describe what the route should do</h2>
-        <p>Use the module prompt to explain the route’s responsibility in plain language. Include the behavior, connected modules, authorization expectations, parameters and response. For example:</p>
+        <p>Use the module prompt to explain the route’s responsibility in plain language. Include its HTTP method, URI, route name, middleware, controller action, connected modules, authorization expectations, parameters and response. For example:</p>
         <pre>Register a GET /accounts route named accounts.index. Use the connected AccountController@index action and the web middleware group. Return the connected Accounts/Index page.</pre>
         <p>The module description identifies its role in the workflow, while the prompt gives AI implementation instructions. A focused prompt makes generated code easier to review and keeps the workflow understandable to teammates.</p>
 
         <h2>Generate and publish route code</h2>
         <p>Select the Route module, review its configuration, and choose <strong>Generate</strong>. AppyHP keeps the generated code as a draft while you review it. The code is published to the selected route file when you click the main <strong>Save</strong> button.</p>
         <p>When <strong>Auto-save</strong> is enabled, changes are published automatically after a short pause. If the target route file does not exist, AppyHP creates it as part of the save process. This applies to <code>web.php</code>, <code>api.php</code>, <code>console.php</code> and <code>channels.php</code>.</p>
-        <p>Changing the Route file selection records the previous route path. On the next Save or Auto-save publication, AppyHP renames the existing target when possible and writes to the new route file.</p>
+        <p>Changing the Route file selection switches the module to the standard file for that route type. AppyHP writes the generated route definition to the selected file without renaming another Laravel route file.</p>
 
         <h2>Shared route files</h2>
         <p>Every Route module using the same type points to the same standard Laravel file. For example, all modules set to <strong>api</strong> target <code>routes/api.php</code>; they do not create separate files such as <code>api-2.php</code>.</p>
@@ -81,7 +70,7 @@
         <ol>
             <li>Add a Route module to the workflow.</li>
             <li>Select <code>web</code>, <code>api</code>, <code>console</code> or <code>channels</code>.</li>
-            <li>Fill in the method, URI, middleware, route name and controller action.</li>
+            <li>Describe the method, URI, middleware, route name and controller action in the module prompt.</li>
             <li>Connect the route to the Controller and any related modules.</li>
             <li>Describe the intended behavior in the prompt.</li>
             <li>Generate the code and review the draft.</li>

@@ -86,7 +86,7 @@
             font: inherit;
         }
 
-        button, a, select, summary, input[type="checkbox"], input[type="radio"] {
+        button, a, select, input[type="checkbox"], input[type="radio"] {
             cursor: pointer;
         }
 
@@ -1478,9 +1478,12 @@
         .studio-modal-header { border-bottom: 1px solid var(--light-line); }
         .dark .studio-modal-header { border-bottom-color: var(--dark-line); }
         .studio-modal-body { padding: .8rem; }
-        .studio-modal-body textarea { min-height: 150px; resize: vertical; width: 100%; }
+        .studio-modal-body > textarea { min-height: 150px; resize: vertical; width: 100%; }
         .studio-modal-ai-result { border-top: 1px solid var(--light-line); margin-top: .75rem; padding-top: .75rem; white-space: pre-wrap; }
         .dark .studio-modal-ai-result { border-top-color: var(--dark-line); }
+        .file-notes-card { display: flex; flex-direction: column; height: min(72vh, 680px); max-width: 920px; width: min(94vw, 920px); }
+        .file-notes-card .studio-modal-body { display: flex; flex: 1 1 auto; min-height: 0; padding: .8rem; }
+        .file-notes-card .shared-text-editor { flex: 1 1 auto; min-height: 0; }
         .clickable { cursor: pointer; }
 
         .code-editor-shell {
@@ -1882,13 +1885,7 @@
                                 <button type="button" class="workflow-action icon-only" data-editor-notes aria-label="File notes" title="File notes">✎</button>
                                 <a class="workflow-action studio-docs-link" href="/appyhp/studio/web/index.html" target="_blank" rel="noopener noreferrer" aria-label="Open AppyHP documentation" title="Open AppyHP documentation">Docs ↗</a>
                             </div>
-                            <div class="code-editor-shell empty" data-code-editor-shell>
-                                <div class="code-gutter" aria-hidden="true">
-                                    <div class="code-gutter-lines" data-code-gutter-lines>1</div>
-                                </div>
-                                <pre class="code-highlight" data-code-highlight aria-hidden="true"><code></code></pre>
-                                <textarea class="file-editor" data-file-editor spellcheck="false" wrap="off" disabled></textarea>
-                            </div>
+                            <div class="directory-code-editor-host" data-code-editor-host></div>
                             <div class="editor-status" data-editor-status></div>
                         </div>
                     </section>
@@ -1951,9 +1948,9 @@
         </div>
     </div>
     <div class="studio-modal" data-file-notes-modal aria-hidden="true">
-        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="file-notes-title">
+        <div class="studio-modal-card file-notes-card" role="dialog" aria-modal="true" aria-labelledby="file-notes-title">
             <div class="studio-modal-header"><strong id="file-notes-title">File notes</strong><button type="button" class="workflow-action" data-file-notes-close>Close</button></div>
-            <div class="studio-modal-body"><textarea data-file-notes-input placeholder="Describe what this file does..."></textarea></div>
+            <div class="studio-modal-body" data-file-notes-editor-host></div>
             <div class="studio-modal-actions"><span class="editor-status" data-file-notes-status></span><button type="button" class="workflow-action ai-primary" data-file-notes-save>Save notes</button></div>
         </div>
     </div>
@@ -1990,11 +1987,12 @@
             var editorInfoButton = shell.querySelector('[data-editor-info]');
             var editorNotesButton = shell.querySelector('[data-editor-notes]');
             var editorStatus = shell.querySelector('[data-editor-status]');
+            var codeEditorHost = shell.querySelector('[data-code-editor-host]');
+            codeEditorHost.innerHTML = sharedTextEditorMarkup('data-code-editor-shell', 'data-file-editor', 'Project file editor', false, 'Select a file from Directories', 'directory-code-editor');
             var codeEditorShell = shell.querySelector('[data-code-editor-shell]');
-            var codeHighlight = shell.querySelector('[data-code-highlight] code');
-            var codeHighlightLayer = shell.querySelector('[data-code-highlight]');
-            var codeGutterLines = shell.querySelector('[data-code-gutter-lines]');
             var fileEditor = shell.querySelector('[data-file-editor]');
+            fileEditor.disabled = true;
+            bindSharedTextEditor(codeEditorShell, fileEditor, 'plain');
             var panelLabels = {
                 workflows: 'Workflows',
                 directories: 'Directories'
@@ -2070,8 +2068,12 @@
             var fileInfoAiButton = document.querySelector('[data-file-info-ai]');
             var fileInfoAiResult = document.querySelector('[data-file-info-ai-result]');
             var fileNotesModal = document.querySelector('[data-file-notes-modal]');
+            var fileNotesEditorHost = document.querySelector('[data-file-notes-editor-host]');
+            fileNotesEditorHost.innerHTML = sharedTextEditorMarkup('data-file-notes-editor-shell', 'data-file-notes-input', 'File notes', true, 'Describe what this file does in Markdown...');
+            var fileNotesEditorShell = document.querySelector('[data-file-notes-editor-shell]');
             var fileNotesInput = document.querySelector('[data-file-notes-input]');
             var fileNotesStatus = document.querySelector('[data-file-notes-status]');
+            bindSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
 
             function setSidebarVisible(visible) {
                 sidebarVisible = visible;
@@ -2177,8 +2179,24 @@
                     return 'php';
                 }
 
-                if (/\.(mjs|cjs|js|jsx|ts|tsx|json)$/.test(lowerPath)) {
+                if (/\.vue$/.test(lowerPath)) {
+                    return 'vue';
+                }
+
+                if (/\.svelte$/.test(lowerPath)) {
+                    return 'svelte';
+                }
+
+                if (/\.(jsx|tsx)$/.test(lowerPath)) {
+                    return 'jsx';
+                }
+
+                if (/\.(mjs|cjs|js|ts|json)$/.test(lowerPath)) {
                     return 'js';
+                }
+
+                if (/\.(css|scss|sass|less)$/.test(lowerPath)) {
+                    return 'css';
                 }
 
                 if (/\.(html|htm|xml|svg)$/.test(lowerPath)) {
@@ -2189,8 +2207,20 @@
             }
 
             function highlightCode(source, language) {
+                if (language === 'markdown') {
+                    return highlightMarkdown(source);
+                }
+
                 if (language === 'html') {
                     return highlightMarkup(source);
+                }
+
+                if (language === 'css') {
+                    return highlightStylesheet(source);
+                }
+
+                if (language === 'vue' || language === 'svelte' || language === 'jsx') {
+                    return highlightComponent(source, language);
                 }
 
                 if (language === 'php' || language === 'js') {
@@ -2198,6 +2228,42 @@
                 }
 
                 return escapeHtml(source);
+            }
+
+            function highlightMarkdown(source) {
+                var fenced = false;
+                return String(source || '').split('\n').map(function (line) {
+                    if (/^\s*```/.test(line)) {
+                        fenced = !fenced;
+                        return token('token-md-fence', line);
+                    }
+                    if (fenced) return token('token-md-code', line);
+
+                    var heading = line.match(/^(\s*)(#{1,6})(\s+)(.*)$/);
+                    if (heading) {
+                        return escapeHtml(heading[1]) + token('token-md-marker', heading[2]) +
+                            escapeHtml(heading[3]) + token('token-md-heading', heading[4]);
+                    }
+                    var quote = line.match(/^(\s*)(>)(\s?)(.*)$/);
+                    if (quote) {
+                        return escapeHtml(quote[1]) + token('token-md-marker', quote[2]) +
+                            escapeHtml(quote[3]) + token('token-md-quote', quote[4]);
+                    }
+                    var list = line.match(/^(\s*)((?:[-+*]|\d+\.)\s+)(.*)$/);
+                    if (list) {
+                        return escapeHtml(list[1]) + token('token-md-marker', list[2]) + highlightMarkdownInline(list[3]);
+                    }
+                    if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) return token('token-md-marker', line);
+                    return highlightMarkdownInline(line);
+                }).join('\n');
+            }
+
+            function highlightMarkdownInline(line) {
+                return replaceWithEscapedGaps(line, /(`[^`\n]+`|\[[^\]\n]+\]\([^\s)]+(?:\s+"[^"]*")?\)|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(?<!\*)\*[^*\n]+\*(?!\*)|(?<!_)_[^_\n]+_(?!_)|https?:\/\/[^\s<]+)/g, function (match) {
+                    if (match.charAt(0) === '`') return token('token-md-code', match);
+                    if (match.charAt(0) === '[' || /^https?:/.test(match)) return token('token-md-link', match);
+                    return token('token-md-emphasis', match);
+                });
             }
 
             function replaceWithEscapedGaps(source, pattern, callback) {
@@ -2222,7 +2288,7 @@
 
             function highlightScript(source, language) {
                 var phpKeywords = 'abstract|and|array|as|break|callable|case|catch|class|clone|const|continue|declare|default|do|echo|else|elseif|empty|enddeclare|endfor|endforeach|endif|endswitch|endwhile|enum|eval|exit|extends|final|finally|fn|for|foreach|function|global|goto|if|implements|include|include_once|instanceof|insteadof|interface|isset|list|match|namespace|new|or|print|private|protected|public|readonly|require|require_once|return|static|switch|throw|trait|try|unset|use|var|while|xor|yield|true|false|null';
-                var jsKeywords = 'await|async|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|from|function|get|if|import|in|instanceof|let|new|null|of|return|set|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|with|yield';
+                var jsKeywords = 'await|async|break|case|catch|class|const|continue|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|from|function|get|if|implements|import|in|infer|instanceof|interface|keyof|let|namespace|new|null|of|private|protected|public|readonly|return|satisfies|set|static|super|switch|this|throw|true|try|type|typeof|undefined|var|void|while|with|yield';
                 var keywords = language === 'php' ? phpKeywords : jsKeywords;
                 var pattern = new RegExp('(/\\*[\\s\\S]*?\\*/|//[^\\n]*|#[^\\n]*|`(?:\\\\.|[^`\\\\])*`|"(?:\\\\.|[^"\\\\])*"|\\\'(?:\\\\.|[^\\\'\\\\])*\\\'|\\$[A-Za-z_][A-Za-z0-9_]*|\\b(?:' + keywords + ')\\b|\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()|\\b\\d+(?:\\.\\d+)?\\b|[{}()[\\].,;:?]|[+\\-*\\/%=!<>|&~^]+)', 'g');
 
@@ -2255,6 +2321,34 @@
                 });
             }
 
+            function highlightStylesheet(source) {
+                var pattern = /(\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|@[\w-]+|--[\w-]+|#[0-9a-fA-F]{3,8}\b|\b\d+(?:\.\d+)?(?:px|rem|em|vh|vw|vmin|vmax|%|s|ms|deg)?\b|[\w-]+(?=\s*:)|[^{}]+(?=\s*\{)|[{}:;,()>+~*=/\[\].#])/g;
+                return replaceWithEscapedGaps(source, pattern, function (match) {
+                    if (/^\/\*/.test(match)) return token('token-comment', match);
+                    if (/^["']/.test(match)) return token('token-string', match);
+                    if (/^@/.test(match)) return token('token-css-atrule', match);
+                    if (/^--/.test(match)) return token('token-variable', match);
+                    if (/^#[0-9a-fA-F]{3,8}$/.test(match) || /^\d/.test(match)) return token('token-number', match);
+                    if (/^[\w-]+$/.test(match)) return token('token-css-property', match);
+                    if (!/^[{}:;,()>+~*=/\[\].#]$/.test(match)) return token('token-css-selector', match);
+                    return token('token-punctuation', match);
+                });
+            }
+
+            function highlightComponent(source, language) {
+                var keywords = 'await|async|break|case|catch|class|const|continue|default|delete|do|else|export|extends|false|finally|for|from|function|if|import|in|instanceof|interface|let|new|null|of|return|static|switch|this|throw|true|try|type|typeof|undefined|var|void|while|yield';
+                var pattern = new RegExp('(<!--[\\s\\S]*?-->|<\\/?[A-Za-z][^>]*>|/\\*[\\s\\S]*?\\*/|//[^\\n]*|`(?:\\\\.|[^`\\\\])*`|"(?:\\\\.|[^"\\\\])*"|\\\'(?:\\\\.|[^\\\'\\\\])*\\\'|\\b(?:' + keywords + ')\\b|\\b[A-Za-z_$][A-Za-z0-9_$]*(?=\\s*\\()|\\b\\d+(?:\\.\\d+)?\\b|[{}()[\\].,;:?]|[+\\-*\\/%=!<>|&~^]+)', 'g');
+                return replaceWithEscapedGaps(source, pattern, function (match) {
+                    if (/^<!--|^\/\*|^\/\//.test(match)) return token('token-comment', match);
+                    if (/^<\/?[A-Za-z]/.test(match)) return highlightMarkup(match);
+                    if (/^["'`]/.test(match)) return token('token-string', match);
+                    if (new RegExp('^(' + keywords + ')$').test(match)) return token('token-keyword', match);
+                    if (/^\d/.test(match)) return token('token-number', match);
+                    if (/^[A-Za-z_$]/.test(match)) return token('token-function', match);
+                    return token('token-punctuation', match);
+                });
+            }
+
             function highlightMarkup(source) {
                 return replaceWithEscapedGaps(source, /(<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?[A-Za-z][^>]*>)/gi, function (match) {
                     if (/^<!--/.test(match)) {
@@ -2279,34 +2373,10 @@
             }
 
             function updateCodeEditor() {
-                var value = fileEditor.value || '';
-                var lineCount = Math.max(1, value.split('\n').length);
-                var lines = [];
-
-                for (var index = 1; index <= lineCount; index += 1) {
-                    lines.push(index);
-                }
-
-                codeGutterLines.textContent = lines.join('\n');
-                codeHighlight.innerHTML = highlightCode(value, selectedLanguage);
-                codeEditorShell.classList.toggle('empty', !selectedFilePath);
-                syncCodeEditorScroll();
-            }
-
-            function syncCodeEditorScroll() {
-                codeHighlightLayer.scrollTop = fileEditor.scrollTop;
-                codeHighlightLayer.scrollLeft = fileEditor.scrollLeft;
-                codeGutterLines.style.transform = 'translateY(-' + fileEditor.scrollTop + 'px)';
-            }
-
-            function insertAtCursor(text) {
-                var start = fileEditor.selectionStart;
-                var end = fileEditor.selectionEnd;
-                var value = fileEditor.value;
-
-                fileEditor.value = value.slice(0, start) + text + value.slice(end);
-                fileEditor.selectionStart = start + text.length;
-                fileEditor.selectionEnd = start + text.length;
+                var placeholder = selectedFilePath ? 'Start typing...' : 'Select a file from Directories';
+                codeEditorShell.querySelector('[data-module-editor-highlight] code').dataset.placeholder = placeholder;
+                fileEditor.placeholder = placeholder;
+                updateSharedTextEditor(codeEditorShell, fileEditor, selectedLanguage);
             }
 
             function iconSvg(type, expanded) {
@@ -2692,271 +2762,137 @@
                 'inertia-page': {
                     title: 'Inertia Page',
                     description: 'Page and props connected to a Laravel controller.',
-                    defaults: { page: 'Users/Index', framework: 'inherit', language: 'javascript', props: 'users, filters', layout: '' },
-                    fields: [
-                        { key: 'page', label: 'Page name', type: 'text' },
-                        { key: 'framework', label: 'Framework', type: 'select', options: ['inherit', 'vue', 'react', 'svelte'] },
-                        { key: 'language', label: 'Language', type: 'select', options: ['javascript', 'typescript'] },
-                        { key: 'props', label: 'Props', type: 'textarea' },
-                        { key: 'layout', label: 'Layout', type: 'text' }
-                    ]
+                    defaults: { page: 'Users/Index', framework: 'inherit', language: 'javascript', props: 'users, filters', layout: '' }
                 },
                 'inertia-middleware': {
                     title: 'Inertia Middleware',
                     description: 'Shares global Inertia data such as the authenticated user, flash messages, and asset versions.',
-                    defaults: { class: 'HandleInertiaRequests', rootView: 'app', shared: 'auth.user, flash.success, flash.error' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'rootView', label: 'Root view', type: 'text' },
-                        { key: 'shared', label: 'Shared props', type: 'textarea' }
-                    ]
+                    defaults: { class: 'HandleInertiaRequests', rootView: 'app', shared: 'auth.user, flash.success, flash.error' }
                 },
                 route: {
                     title: 'Route',
                     description: 'HTTP route entry point.',
-                    defaults: { routeType: 'web', method: 'GET', uri: '/', middleware: 'web', name: '', action: 'index' },
-                    fields: [
-                        { key: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
-                        { key: 'uri', label: 'URI', type: 'text' },
-                        { key: 'middleware', label: 'Middleware', type: 'text' },
-                        { key: 'name', label: 'Route name', type: 'text' },
-                        { key: 'action', label: 'Controller action', type: 'text' }
-                    ]
+                    defaults: { routeType: 'web', method: 'GET', uri: '/', middleware: 'web', name: '', action: 'index' }
                 },
                 middleware: {
                     title: 'Middleware',
                     description: 'Request guard or request mutation layer.',
-                    defaults: { class: 'EnsureUserIsActive', alias: 'active.user', appliesTo: 'web' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'alias', label: 'Alias', type: 'text' },
-                        { key: 'appliesTo', label: 'Applies to', type: 'text' }
-                    ]
+                    defaults: { class: 'EnsureUserIsActive', alias: 'active.user', appliesTo: 'web' }
                 },
                 controller: {
                     title: 'Controller',
                     description: 'Coordinates request handling.',
-                    defaults: { class: 'UserController', actions: 'index, store, show, update, destroy' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'actions', label: 'Actions', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserController', actions: 'index, store, show, update, destroy' }
                 },
                 request: {
                     title: 'Form Request',
                     description: 'Validation and authorization for input.',
-                    defaults: { class: 'StoreUserRequest', rules: "name: required|string|max:255\nemail: required|email|unique:users" },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'rules', label: 'Rules', type: 'textarea' }
-                    ]
+                    defaults: { class: 'StoreUserRequest', rules: "name: required|string|max:255\nemail: required|email|unique:users" }
                 },
                 resource: {
                     title: 'API Resource',
                     description: 'Transforms models for API responses.',
-                    defaults: { class: 'UserResource', wraps: 'User', fields: 'id, name, email, created_at' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'wraps', label: 'Wraps', type: 'text' },
-                        { key: 'fields', label: 'Fields', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserResource', wraps: 'User', fields: 'id, name, email, created_at' }
                 },
                 model: {
                     title: 'Model',
                     description: 'Eloquent model and relationships.',
-                    defaults: { class: 'User', fillable: 'name, email, password', relationships: 'hasMany:Post' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'fillable', label: 'Fillable', type: 'textarea' },
-                        { key: 'relationships', label: 'Relationships', type: 'textarea' }
-                    ]
+                    defaults: { class: 'User', fillable: 'name, email, password', relationships: 'hasMany:Post' }
                 },
                 table: {
                     title: 'Database Table',
                     description: 'Database table and columns.',
-                    defaults: { name: 'users', columns: "id:uuid\nname:string\nemail:string:unique\ntimestamps" },
-                    fields: [
-                        { key: 'name', label: 'Name', type: 'text' },
-                        { key: 'columns', label: 'Columns', type: 'textarea' }
-                    ]
+                    defaults: { name: 'users', columns: "id:uuid\nname:string\nemail:string:unique\ntimestamps" }
                 },
                 migration: {
                     title: 'Migration',
                     description: 'Schema change for a database table.',
-                    defaults: { name: 'create_users_table', table: 'users', operation: 'create' },
-                    fields: [
-                        { key: 'name', label: 'Name', type: 'text' },
-                        { key: 'table', label: 'Table', type: 'text' },
-                        { key: 'operation', label: 'Operation', type: 'select', options: ['create', 'alter', 'drop'] }
-                    ]
+                    defaults: { name: 'create_users_table', table: 'users', operation: 'create' }
                 },
                 factory: {
                     title: 'Factory',
                     description: 'Test and seed data definition.',
-                    defaults: { class: 'UserFactory', model: 'User', states: 'verified, suspended' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'model', label: 'Model', type: 'text' },
-                        { key: 'states', label: 'States', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserFactory', model: 'User', states: 'verified, suspended' }
                 },
                 seeder: {
                     title: 'Seeder',
                     description: 'Initial or demo data loader.',
-                    defaults: { class: 'UserSeeder', model: 'User', count: '25' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'model', label: 'Model', type: 'text' },
-                        { key: 'count', label: 'Count', type: 'text' }
-                    ]
+                    defaults: { class: 'UserSeeder', model: 'User', count: '25' }
                 },
                 service: {
                     title: 'Service',
                     description: 'Application service for domain logic.',
-                    defaults: { class: 'UserService', responsibilities: 'Create users, update profiles, deactivate accounts' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'responsibilities', label: 'Responsibilities', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserService', responsibilities: 'Create users, update profiles, deactivate accounts' }
                 },
                 repository: {
                     title: 'Repository',
                     description: 'Persistence abstraction for data access.',
-                    defaults: { class: 'UserRepository', model: 'User', methods: 'findByEmail, activeUsers, search' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'model', label: 'Model', type: 'text' },
-                        { key: 'methods', label: 'Methods', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserRepository', model: 'User', methods: 'findByEmail, activeUsers, search' }
                 },
                 policy: {
                     title: 'Policy',
                     description: 'Authorization rules for a model.',
-                    defaults: { class: 'UserPolicy', model: 'User', abilities: 'view, create, update, delete' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'model', label: 'Model', type: 'text' },
-                        { key: 'abilities', label: 'Abilities', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserPolicy', model: 'User', abilities: 'view, create, update, delete' }
                 },
                 job: {
                     title: 'Job',
                     description: 'Queued background work.',
-                    defaults: { class: 'SendWelcomeEmail', queue: 'default', retries: '3' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'queue', label: 'Queue', type: 'text' },
-                        { key: 'retries', label: 'Retries', type: 'text' }
-                    ]
+                    defaults: { class: 'SendWelcomeEmail', queue: 'default', retries: '3' }
                 },
                 command: {
                     title: 'Command',
                     description: 'Artisan command.',
-                    defaults: { class: 'SyncUsersCommand', signature: 'users:sync {--force}', schedule: 'daily' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'signature', label: 'Signature', type: 'text' },
-                        { key: 'schedule', label: 'Schedule', type: 'text' }
-                    ]
+                    defaults: { class: 'SyncUsersCommand', signature: 'users:sync {--force}', schedule: 'daily' }
                 },
                 event: {
                     title: 'Event',
                     description: 'Domain event emitted by the app.',
-                    defaults: { class: 'UserRegistered', payload: 'user_id, email' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'payload', label: 'Payload', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserRegistered', payload: 'user_id, email' }
                 },
                 listener: {
                     title: 'Listener',
                     description: 'Handles an application event.',
-                    defaults: { class: 'SendUserWelcomeNotification', listensTo: 'UserRegistered', queued: 'yes' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'listensTo', label: 'Listens to', type: 'text' },
-                        { key: 'queued', label: 'Queued', type: 'select', options: ['yes', 'no'] }
-                    ]
+                    defaults: { class: 'SendUserWelcomeNotification', listensTo: 'UserRegistered', queued: 'yes' }
                 },
                 notification: {
                     title: 'Notification',
                     description: 'Notification delivered through channels.',
-                    defaults: { class: 'WelcomeNotification', channels: 'mail, database', recipient: 'User' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'channels', label: 'Channels', type: 'text' },
-                        { key: 'recipient', label: 'Recipient', type: 'text' }
-                    ]
+                    defaults: { class: 'WelcomeNotification', channels: 'mail, database', recipient: 'User' }
                 },
                 mail: {
                     title: 'Mail',
                     description: 'Mailable message.',
-                    defaults: { class: 'WelcomeMail', view: 'mail.welcome', subject: 'Welcome' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'view', label: 'View', type: 'text' },
-                        { key: 'subject', label: 'Subject', type: 'text' }
-                    ]
+                    defaults: { class: 'WelcomeMail', view: 'mail.welcome', subject: 'Welcome' }
                 },
                 queue: {
                     title: 'Queue',
                     description: 'Queue connection and worker lane.',
-                    defaults: { connection: 'redis', name: 'default', workers: '2' },
-                    fields: [
-                        { key: 'connection', label: 'Connection', type: 'text' },
-                        { key: 'name', label: 'Name', type: 'text' },
-                        { key: 'workers', label: 'Workers', type: 'text' }
-                    ]
+                    defaults: { connection: 'redis', name: 'default', workers: '2' }
                 },
                 view: {
                     title: 'Blade View',
                     description: 'Blade template rendered to the user.',
-                    defaults: { path: 'users.index', layout: 'layouts.app', data: 'users, filters' },
-                    fields: [
-                        { key: 'path', label: 'Path', type: 'text' },
-                        { key: 'layout', label: 'Layout', type: 'text' },
-                        { key: 'data', label: 'Data', type: 'textarea' }
-                    ]
+                    defaults: { path: 'users.index', layout: 'layouts.app', data: 'users, filters' }
                 },
                 component: {
                     title: 'Blade Component',
                     description: 'Reusable UI component.',
-                    defaults: { class: 'UserCard', view: 'components.user-card', props: 'user, compact' },
-                    fields: [
-                        { key: 'class', label: 'Class', type: 'text' },
-                        { key: 'view', label: 'View', type: 'text' },
-                        { key: 'props', label: 'Props', type: 'textarea' }
-                    ]
+                    defaults: { class: 'UserCard', view: 'components.user-card', props: 'user, compact' }
                 },
                 auth: {
                     title: 'Auth',
                     description: 'Authentication and guard behavior.',
-                    defaults: { guard: 'web', provider: 'users', features: 'login, registration, password reset, email verification' },
-                    fields: [
-                        { key: 'guard', label: 'Guard', type: 'text' },
-                        { key: 'provider', label: 'Provider', type: 'text' },
-                        { key: 'features', label: 'Features', type: 'textarea' }
-                    ]
+                    defaults: { guard: 'web', provider: 'users', features: 'login, registration, password reset, email verification' }
                 },
                 cache: {
                     title: 'Cache',
                     description: 'Cache key or tagged cache boundary.',
-                    defaults: { store: 'redis', key: 'users.active', ttl: '300' },
-                    fields: [
-                        { key: 'store', label: 'Store', type: 'text' },
-                        { key: 'key', label: 'Key', type: 'text' },
-                        { key: 'ttl', label: 'TTL seconds', type: 'text' }
-                    ]
+                    defaults: { store: 'redis', key: 'users.active', ttl: '300' }
                 },
                 storage: {
                     title: 'Storage',
                     description: 'Filesystem disk and file location.',
-                    defaults: { disk: 'public', path: 'avatars', visibility: 'public' },
-                    fields: [
-                        { key: 'disk', label: 'Disk', type: 'text' },
-                        { key: 'path', label: 'Path', type: 'text' },
-                        { key: 'visibility', label: 'Visibility', type: 'select', options: ['public', 'private'] }
-                    ]
+                    defaults: { disk: 'public', path: 'avatars', visibility: 'public' }
                 }
             };
 
@@ -3509,6 +3445,10 @@
                                 changed = true;
                                 return updatedModule;
                             }
+                            if (changedTarget && beforePath && moduleTargetPath(module) === beforePath) {
+                                changed = true;
+                                return inheritFileModuleAttributes(module, updatedModule);
+                            }
                             if (!changedTarget && afterPath && moduleTargetPath(module) === afterPath) {
                                 changed = true;
                                 return inheritFileModuleAttributes(module, updatedModule);
@@ -3522,6 +3462,40 @@
                         }), workflowIndex);
                     });
                     markDirty(options);
+                }
+
+                function renameFileReferences(oldPath, newPath, hash) {
+                    if (!oldPath || !newPath || oldPath === newPath) return;
+                    var changed = false;
+                    var now = new Date().toISOString();
+                    var newFolder = parentPathOf(newPath);
+                    var newFilename = newPath.split('/').pop();
+
+                    state.workflows = state.workflows.map(function (workflow, workflowIndex) {
+                        var workflowChanged = false;
+                        var modules = workflow.modules.map(function (module) {
+                            if (moduleTargetPath(module) !== oldPath) return module;
+                            workflowChanged = true;
+                            changed = true;
+                            var config = Object.assign({}, module.config, {
+                                folder: newFolder,
+                                filename: newFilename
+                            });
+                            delete config.previousPath;
+                            if (config.ai && config.ai.path === oldPath) {
+                                config.ai = Object.assign({}, config.ai, { path: newPath });
+                                if (hash) config.ai.baseHash = hash;
+                            }
+                            return Object.assign({}, module, { config: config });
+                        });
+                        if (!workflowChanged) return workflow;
+                        return normalizeWorkflow(Object.assign({}, workflow, {
+                            modules: modules,
+                            meta: Object.assign({}, workflow.meta || {}, { updatedAt: now })
+                        }), workflowIndex);
+                    });
+
+                    if (changed) markDirty({ skipHistory: true });
                 }
 
                 function setFrontend(frontend) {
@@ -3802,6 +3776,7 @@
                     addModule: addModule,
                     moveModule: moveModule,
                     updateModule: updateModule,
+                    renameFileReferences: renameFileReferences,
                     setFrontend: setFrontend,
                     deleteModule: deleteModule,
                     toggleConnect: toggleConnect,
@@ -4377,34 +4352,16 @@
                     } else {
                         patch.config = {};
                         patch.config[field.key] = control.value;
-                        if (field.key === 'filename') {
+                        if (field.key === 'filename' || field.key === 'folder') {
                             patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
                         }
-                        var before = defaultModuleTarget(current.type, current.config, workflowFrontend());
-                        var after = defaultModuleTarget(current.type, Object.assign({}, current.config, patch.config), workflowFrontend());
                         if (current.type === 'route' && field.key === 'routeType') {
+                            var target = defaultModuleTarget(current.type, Object.assign({}, current.config, patch.config), workflowFrontend());
                             patch.config.folder = 'routes';
-                            patch.config.filename = after.filename;
+                            patch.config.filename = target.filename;
                             patch.config.previousPath = '';
                             patch.config.ai = null;
                         }
-                        if (['class', 'path', 'page', 'name'].includes(field.key)) {
-                            if (current.config.folder === before.folder) patch.config.folder = after.folder;
-                            if (current.config.filename === before.filename) {
-                                patch.config.filename = after.filename;
-                                patch.config.previousPath = [current.config.folder, current.config.filename].filter(Boolean).join('/');
-                            }
-                            if (['table', 'migration'].includes(current.type)) {
-                                var previousSuffix = before.filename.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
-                                var nextSuffix = after.filename.replace(/^\d{4}_\d{2}_\d{2}_\d{6}_/, '');
-                                if (current.config.filename.endsWith(previousSuffix)) patch.config.filename = current.config.filename.slice(0, -previousSuffix.length) + nextSuffix;
-                            }
-                        }
-                    }
-                    if (current.type === 'inertia-page' && ['framework', 'language'].includes(field.key)) {
-                        var next = Object.assign({}, current.config, patch.config);
-                        var framework = next.framework === 'inherit' ? workflowFrontend() : next.framework;
-                        patch.config.filename = next.filename.replace(/\.(vue|jsx|tsx|svelte)$/, '.' + inertiaExtension(framework, next.language));
                     }
                     workflowStore.updateModule(module.id, patch, { historyGroup: module.id + ':' + field.key });
                     queueModuleGeneration();
@@ -4604,6 +4561,44 @@
                 return parts.join('/');
             }
 
+            function refreshDirectoryPaths(paths) {
+                if (!directoriesLoaded) return Promise.resolve();
+                var refreshes = [];
+                (paths || []).forEach(function (path) {
+                    var parent = parentPathOf(path);
+                    while (parent && !directoryContainers[parent]) parent = parentPathOf(parent);
+                    if (!directoryContainers[parent] || refreshes.includes(parent)) return;
+                    refreshes.push(parent);
+                });
+                return Promise.all(refreshes.map(function (parent) { return loadDirectory(parent); }));
+            }
+
+            function reflectFileSystemChanges(changes) {
+                changes = (changes || []).filter(function (change) { return change && change.path; });
+                var paths = [];
+                changes.forEach(function (change) {
+                    paths.push(change.path);
+                    if (change.oldPath) paths.push(change.oldPath);
+                    if (selectedFilePath !== change.path && selectedFilePath !== change.oldPath) return;
+                    var oldPath = selectedFilePath;
+                    selectedFilePath = change.path;
+                    selectedFileHash = change.hash || selectedFileHash;
+                    selectedLanguage = detectLanguage(change.path);
+                    editorPath.textContent = change.path;
+                    editorName.value = change.path.split('/').pop();
+                    if (oldPath !== change.path) rebaseFileHistoryPaths(oldPath, change.path);
+                    if (!fileDirty && typeof change.content === 'string') {
+                        fileEditor.value = change.content;
+                        updateCodeEditor();
+                    }
+                    fileHistoryCurrent = captureFileHistorySnapshot();
+                });
+
+                return refreshDirectoryPaths(paths).then(function () {
+                    if (selectedFilePath) selectFile(selectedFilePath);
+                });
+            }
+
             function closeDirectoryContextMenu() {
                 directoryContextMenu.classList.remove('active');
                 directoryContextItem = null;
@@ -4775,6 +4770,12 @@
             }
 
             function renderDirectoryItems(parentPath, items, container) {
+                var prefix = parentPath ? parentPath + '/' : '';
+                [directoryContainers, directoryToggles, directoryEntries, fileEntries].forEach(function (registry) {
+                    Object.keys(registry).forEach(function (path) {
+                        if (path !== parentPath && path.indexOf(prefix) === 0) delete registry[path];
+                    });
+                });
                 container.innerHTML = '';
 
                 items.forEach(function (item) {
@@ -4964,6 +4965,7 @@
 
                 setEditorStatus('Saving');
 
+                var originalPath = selectedFilePath;
                 var nextName = editorName.value.trim();
                 var rename = nextName && nextName !== selectedFilePath.split('/').pop()
                     ? postJson(directoryUrl('/rename'), { path: selectedFilePath, name: nextName })
@@ -4977,15 +4979,18 @@
                     if (oldPath !== selectedFilePath) {
                         rebaseFileHistoryPaths(oldPath, selectedFilePath);
                         selectFile(selectedFilePath);
-                        loadDirectory(parentPathOf(oldPath));
                     }
                     return postJson(directoryUrl('/file'), {
                         path: selectedFilePath,
-                        content: fileEditor.value
+                        content: fileEditor.value,
+                        expectedHash: selectedFileHash
                     }, 'PUT');
                 }).then(function (payload) {
                     selectedFileHash = payload.hash || selectedFileHash;
                     fileDirty = false;
+                    if (originalPath !== selectedFilePath) {
+                        workflowStore.renameFileReferences(originalPath, selectedFilePath, selectedFileHash);
+                    }
                     markEditedFileSaved();
                     fileHistoryCurrent = captureFileHistorySnapshot();
                     updateManualSaveState();
@@ -4993,6 +4998,12 @@
                     if (appyhpStore.getState().autosave && workflowStore.getState().dirty) {
                         workflowStore.save().catch(function () {});
                     }
+                    return reflectFileSystemChanges([{
+                        oldPath: originalPath,
+                        path: selectedFilePath,
+                        hash: selectedFileHash,
+                        content: fileEditor.value
+                    }]);
                 }).catch(function (error) {
                     setEditorStatus(error.message);
                 });
@@ -5116,25 +5127,17 @@
                 fileNotesModal.setAttribute('aria-hidden', 'false');
                 if (!selectedFilePath) {
                     fileNotesInput.value = '';
+                    updateSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
                     fileNotesStatus.textContent = 'Select a file before saving notes.';
                     return;
                 }
                 fileNotesStatus.textContent = 'Loading...';
                 requestJson(directoryUrl('/metadata', { path: selectedFilePath })).then(function (payload) {
                     fileNotesInput.value = payload.notes || '';
+                    updateSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
                     fileNotesStatus.textContent = '';
                     fileNotesInput.focus();
                 }).catch(function (error) { fileNotesStatus.textContent = error.message; });
-            }
-
-            function handleEditorKeydown(event) {
-                if (event.key !== 'Tab') {
-                    return;
-                }
-
-                event.preventDefault();
-                insertAtCursor('    ');
-                handleFileInput();
             }
 
             function updateFullscreenIcon() {
@@ -5260,8 +5263,6 @@
                 }
             });
 
-            fileEditor.addEventListener('scroll', syncCodeEditorScroll);
-            fileEditor.addEventListener('keydown', handleEditorKeydown);
             fileEditor.addEventListener('input', handleFileInput);
             editorName.addEventListener('input', function () {
                 if (!selectedFilePath) return;

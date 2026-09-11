@@ -19,7 +19,9 @@ class AiSettings
         $path = $this->runtime->path('ai-settings.json');
 
         if (is_file($path)) {
-            $stored = json_decode(file_get_contents($path), true);
+            $contents = file_get_contents($path);
+            abort_if($contents === false, 500, 'Unable to read AI settings.');
+            $stored = json_decode($contents, true);
             abort_unless(is_array($stored), 500, 'Unable to read AI settings.');
             $encryptedKey = $stored['api_key'] ?? '';
             $stored['api_key'] = $encryptedKey === '' ? '' : Crypt::decryptString($encryptedKey);
@@ -78,23 +80,9 @@ class AiSettings
 
     public function save(array $settings): array
     {
-        $directory = $this->runtime->ensure();
-
         $stored = $settings;
         $stored['api_key'] = $settings['api_key'] === '' ? '' : Crypt::encryptString($settings['api_key']);
-        $temporary = tempnam($directory, 'ai-');
-        abort_if($temporary === false, 500, 'Unable to save AI settings.');
-
-        try {
-            chmod($temporary, 0600);
-            $encoded = json_encode($stored, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-            abort_if(file_put_contents($temporary, $encoded . PHP_EOL, LOCK_EX) === false, 500, 'Unable to save AI settings.');
-            abort_unless(rename($temporary, $directory . '/ai-settings.json'), 500, 'Unable to save AI settings.');
-        } finally {
-            if (is_file($temporary)) {
-                unlink($temporary);
-            }
-        }
+        $this->runtime->writeJson('ai-settings.json', $stored);
 
         return $this->publicSettings($settings);
     }

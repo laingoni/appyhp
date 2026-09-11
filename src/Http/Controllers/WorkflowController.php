@@ -22,8 +22,30 @@ class WorkflowController
 
     public function store(Request $request): JsonResponse
     {
+        abort_if(strlen($request->getContent()) > 5242880, 413, 'The workflow payload is too large.');
         $payload = $request->validate([
-            'workflows' => ['required', 'array'],
+            'workflows' => ['required', 'array', 'max:100'],
+            'workflows.*' => ['array'],
+            'workflows.*.id' => ['nullable', 'string', 'max:160'],
+            'workflows.*.name' => ['nullable', 'string', 'max:300'],
+            'workflows.*.description' => ['nullable', 'string', 'max:10000'],
+            'workflows.*.modules' => ['sometimes', 'array', 'max:300'],
+            'workflows.*.modules.*' => ['array'],
+            'workflows.*.modules.*.id' => ['nullable', 'string', 'max:160'],
+            'workflows.*.modules.*.type' => ['nullable', 'string', 'max:80'],
+            'workflows.*.modules.*.label' => ['nullable', 'string', 'max:300'],
+            'workflows.*.modules.*.description' => ['nullable', 'string', 'max:10000'],
+            'workflows.*.modules.*.x' => ['sometimes', 'numeric', 'between:-100000,100000'],
+            'workflows.*.modules.*.y' => ['sometimes', 'numeric', 'between:-100000,100000'],
+            'workflows.*.modules.*.config' => ['sometimes', 'array'],
+            'workflows.*.edges' => ['sometimes', 'array', 'max:1000'],
+            'workflows.*.edges.*' => ['array'],
+            'workflows.*.edges.*.id' => ['nullable', 'string', 'max:160'],
+            'workflows.*.edges.*.from' => ['nullable', 'string', 'max:160'],
+            'workflows.*.edges.*.to' => ['nullable', 'string', 'max:160'],
+            'workflows.*.edges.*.label' => ['nullable', 'string', 'max:300'],
+            'workflows.*.edges.*.type' => ['nullable', 'string', 'in:flex,stiff'],
+            'workflows.*.meta' => ['sometimes', 'array'],
         ]);
 
         $workflows = $this->normalizeWorkflows($payload['workflows']);
@@ -196,15 +218,9 @@ class WorkflowController
      */
     private function writeWorkflows(array $workflows): void
     {
-        $this->runtime->ensure();
-
-        $encoded = json_encode([
+        $this->runtime->writeJson('workflows.json', [
             'workflows' => $workflows,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        if ($encoded === false || file_put_contents($this->workflowPath(), $encoded . PHP_EOL, LOCK_EX) === false) {
-            abort(500, 'Unable to write Appyhp workflows.');
-        }
+        ]);
     }
 
     /**

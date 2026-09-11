@@ -1,4 +1,7 @@
 .env
+/vendor/
+/composer.lock
+/.phpunit.cache/
 
 # Appyhp runtime state: settings, workflows, metadata and file sessions.
 /.appyhp/

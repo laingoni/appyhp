@@ -18,9 +18,19 @@ class AppyhpServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'appyhp');
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__ . '/../config/appyhp.php' => config_path('appyhp.php'),
+            ], 'appyhp-config');
+        }
 
         if ($this->studioEnabled()) {
-            $containsSource = fn (Request $request): bool => $request->is('appyhp/api/workflows', 'appyhp/api/ai/generate', 'appyhp/api/ai/file');
+            $containsSource = fn (Request $request): bool => $request->is(
+                'appyhp/api/workflows',
+                'appyhp/api/ai/generate',
+                'appyhp/api/ai/file',
+                'appyhp/api/directories/file',
+            );
             TrimStrings::skipWhen($containsSource);
             ConvertEmptyStringsToNull::skipWhen($containsSource);
             $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
