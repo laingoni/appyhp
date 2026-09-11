@@ -1,6 +1,6 @@
 {
     "name": "alliswell/appyhp",
-    "description": "a drag and drop builder for laravel",
+    "description": "An intelligent visual application builder for Laravel, combining visual workflow with AI-powered tools for low-code development",
     "type": "library",
     "license": "MIT",
     "authors": [
