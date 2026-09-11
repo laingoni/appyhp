@@ -1,6 +1,6 @@
 {
     "name": "alliswell/appyhp",
-    "description": "An intelligent visual development environment for Laravel that maps application architecture and uses AI to generate real source code.",
+    "description": "An intelligent visual development environment for Laravel that combines architectural workflows, AI-assisted code generation, and source-level development.",
     "type": "library",
     "license": "MIT",
     "authors": [
