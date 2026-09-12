@@ -42,6 +42,7 @@ try {
     await page.getByLabel('Model ID', { exact: true }).fill('fixture-model');
     await page.getByLabel('API key', { exact: true }).fill('fixture-key');
     await page.getByLabel('Typing delay (milliseconds)').fill('600');
+    await page.getByLabel('Live generation', { exact: true }).check();
     await page.getByRole('button', { name: 'Test connection', exact: true }).click();
     await page.getByText('Connected to fixture-model.', { exact: true }).waitFor();
     await page.screenshot({ path: join(artifacts, 'settings-desktop.png') });
@@ -61,6 +62,7 @@ try {
     assert.equal(await prompt.locator('xpath=ancestor::section[contains(@class, "shared-text-editor")]').count(), 1);
     assert.equal(await page.locator('[data-ai-prompt] .shared-text-editor .code-gutter').count(), 0);
     assert.equal(await page.locator('[data-ai-prompt] [data-shared-editor-language]').textContent(), 'Markdown');
+    await page.getByLabel('Live', { exact: true }).check();
     await page.getByRole('button', { name: 'Text Editor', exact: true }).click();
     await page.locator('[data-module-text-editor]').waitFor({ state: 'visible' });
     assert.equal(await page.locator('[data-ai-generate]').count(), 0, 'The text editor must replace the module configuration view');
@@ -123,17 +125,18 @@ try {
     await page.locator('[data-ai-close]').click();
     assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), false);
     await page.locator('.sidebar-toggle-button').click();
+    await page.waitForFunction(() => document.querySelector('#appyhp-studio').classList.contains('sidebar-closed'));
     assert.equal(await page.locator('#appyhp-studio').evaluate((element) => element.classList.contains('sidebar-closed')), true);
     await page.locator('.module-node[data-type="route"] .module-node-label').click();
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
-    await page.getByLabel('Route file', { exact: true }).selectOption('api');
+    await page.locator('#module-field-routeType').selectOption('api');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('API_ROUTE_FILE'));
     assert.match(await readFile(join(project, 'routes/web.php'), 'utf8'), /WEB_ROUTE_FILE/);
     assert.match(await readFile(join(project, 'routes/api.php'), 'utf8'), /API_ROUTE_FILE/);
-    await page.getByLabel('Route file', { exact: true }).selectOption('channels');
+    await page.locator('#module-field-routeType').selectOption('channels');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('Facades\\Broadcast'));
     assert.match(await readFile(join(project, 'routes/channels.php'), 'utf8'), /Facades\\Broadcast/);
-    await page.getByLabel('Route file', { exact: true }).selectOption('web');
+    await page.locator('#module-field-routeType').selectOption('web');
     await page.waitForFunction(() => document.querySelector('[data-ai-code]').value.includes('WEB_ROUTE_FILE'));
     await page.getByRole('button', { name: 'Code editor', exact: true }).click();
     await page.locator('[data-module-file-editor]').waitFor({ state: 'visible' });
@@ -153,7 +156,7 @@ try {
     await prompt.fill('Return the customers for the connected route.');
     await page.getByText('Draft ready.', { exact: true }).waitFor();
     const context = JSON.parse(await readFile(join(project, 'last-ai-context.json'), 'utf8'));
-    assert.equal(context.workflow.modules.find((module) => module.type === 'route').config.uri, '/');
+    assert.equal(context.workflow.modules.find((module) => module.type === 'route').config.uri, '/users');
     assert.ok(context.workflow.edges.length > 0);
 
     await prompt.fill('request tax rules and implement customer totals');
@@ -179,6 +182,7 @@ try {
     await page.locator('.module-node[data-type="inertia-page"] .module-node-label').click();
     await prompt.fill('Show an Inertia users page.');
     await page.getByText('Draft ready.', { exact: true }).waitFor();
+    await page.waitForFunction(() => !document.querySelector('[data-manual-save]').classList.contains('dirty'));
     assert.match(await page.getByLabel('Filename', { exact: true }).inputValue(), /\.vue$/);
     assert.ok((await page.locator('[data-ai-code]').inputValue()).includes('@inertiajs/vue3'));
 
@@ -193,7 +197,7 @@ try {
     }
     await page.locator(`.tree-entry[title="${inertiaPath}/${inertiaOriginalName}"]`).waitFor();
     await page.locator(`.tree-entry[title="${inertiaPath}/${inertiaOriginalName}"]`).click();
-    assert.equal(await page.locator('[data-code-editor-shell] [data-shared-editor-language]').textContent(), 'VUE');
+    await page.getByText('VUE', { exact: true }).waitFor();
     assert.ok(await page.locator('[data-code-editor-shell] .token-tag').count());
     await page.locator('[data-panel-switcher]').click();
     await page.locator('.module-node[data-type="inertia-page"] .module-node-label').click();
@@ -217,14 +221,14 @@ try {
     await page.getByRole('button', { name: 'Code editor', exact: true }).click();
     assert.equal(await page.locator('[data-module-file-editor-shell].shared-text-editor').count(), 1);
     assert.equal(await page.locator('[data-module-file-editor-shell] [data-shared-editor-language]').textContent(), 'PHP');
-    assert.ok(await page.locator('[data-module-file-editor-shell] .token-keyword').count());
+    assert.ok(await page.locator('[data-module-file-editor-shell] .token-comment').count());
     await page.locator('[data-module-file-content]').fill(editedModuleCode);
     await page.locator('[data-module-file-back]').click();
     await page.locator('[data-panel-switcher]').click();
     await page.locator('.tree-entry[title="routes"]').click();
     await page.locator('.tree-entry[title="routes/web.php"]').click();
     assert.equal(await page.locator('[data-code-editor-shell].shared-text-editor').count(), 1);
-    assert.equal(await page.locator('[data-code-editor-shell] [data-shared-editor-language]').textContent(), 'PHP');
+    await page.getByText('PHP', { exact: true }).last().waitFor();
     const originalDirectoryCode = await page.locator('[data-file-editor]').inputValue();
     const editedDirectoryCode = `${originalDirectoryCode.trimEnd()}\n// DIRECTORY_HISTORY_EDIT\n`;
     await page.locator('[data-file-editor]').fill(editedDirectoryCode);
@@ -232,6 +236,7 @@ try {
     assert.equal(await page.locator('[data-file-editor]').inputValue(), originalDirectoryCode);
     await page.locator('[data-undo]').click();
     await page.locator('.studio-panel[data-studio-panel="workflows"]').waitFor({ state: 'visible' });
+    await page.locator('.module-node[data-type="route"] .module-node-label').click();
     assert.equal(await page.locator('[data-ai-code]').inputValue(), editedModuleCode);
     await page.locator('[data-undo]').click();
     assert.equal(await page.locator('[data-ai-code]').inputValue(), originalModuleCode);

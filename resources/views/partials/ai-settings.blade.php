@@ -1,5 +1,5 @@
-<dialog class="ai-settings-dialog" data-ai-settings-dialog aria-labelledby="ai-settings-title">
-    <form data-ai-settings-form>
+<div class="studio-modal ai-settings-modal" data-ai-settings-dialog aria-hidden="true">
+    <form class="ai-settings-dialog" data-ai-settings-form role="dialog" aria-modal="true" aria-labelledby="ai-settings-title">
         <header class="ai-settings-header">
             <h2 id="ai-settings-title">AI settings</h2>
             <button type="button" class="ai-close" data-ai-settings-close aria-label="Close AI settings" title="Close">&times;</button>
@@ -44,4 +44,4 @@
             </div>
         </fieldset>
     </form>
-</dialog>
+</div>

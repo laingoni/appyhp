@@ -1,4 +1,4 @@
-# AppyHP, 🚧beta
+# AppyHP
 
 AppyHP is a free Laravel visual workflow builder for planning application architecture, describing module responsibilities, and turning those plans into real project files. Build workflows from routes, controllers, requests, models, tables, services, jobs, events, pages, and other Laravel building blocks, then connect them to show how your application fits together.
 

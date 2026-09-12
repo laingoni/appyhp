@@ -94,11 +94,19 @@ function defaultModuleTarget(type, config, frontend) {
         var framework = config.framework && config.framework !== 'inherit' ? config.framework : (frontend || aiProject.frontend || 'vue');
         filename = leaf + (type === 'view' ? '.blade.php' : '.' + inertiaExtension(framework, config.language));
     }
-    return { folder: folder, filename: filename, prompt: '', live: false };
+    return { folder: folder, filename: filename, prompt: '', live: true };
 }
 
 function workflowFingerprint(workflow) {
-    var value = JSON.stringify({
+    function stableValue(value) {
+        if (Array.isArray(value)) return value.map(stableValue);
+        if (!value || typeof value !== 'object') return value;
+        return Object.keys(value).sort().reduce(function (result, key) {
+            result[key] = stableValue(value[key]);
+            return result;
+        }, {});
+    }
+    var value = JSON.stringify(stableValue({
         name: workflow.name, description: workflow.description,
         frontend: workflow.meta.frontend || aiProject.frontend || 'blade',
         modules: workflow.modules.map(function (module) {
@@ -108,7 +116,7 @@ function workflowFingerprint(workflow) {
             return { id: module.id, type: module.type, label: module.label, description: module.description, config: config };
         }),
         edges: workflow.edges.map(function (edge) { return { from: edge.from, to: edge.to, label: edge.label }; })
-    });
+    }));
     var hash = 2166136261;
     for (var i = 0; i < value.length; i += 1) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
     return (hash >>> 0).toString(16) + ':' + value.length;
@@ -188,6 +196,7 @@ function loadAiSettings() {
         renderModuleConfig(workflowStore.getState());
         var frontend = shell.querySelector('[data-workflow-frontend]');
         frontend.value = workflowFrontend();
+        refreshCustomSelect(frontend);
     }).catch(function (error) {
         aiFeedback = { message: error.message || 'Unable to load AI settings.', error: true };
         renderModuleConfig(workflowStore.getState());
@@ -231,17 +240,31 @@ function openAiSettings() {
     aiForm.elements.clear_key.checked = false;
     aiForm.elements.live.checked = values.live;
     aiForm.elements.debounce_ms.value = values.debounce_ms;
+    refreshCustomSelect(aiForm.elements.provider);
     refreshKeyPlaceholder();
     settingsStatus('', false);
-    aiDialog.showModal();
+    aiDialog.classList.add('active');
+    aiDialog.setAttribute('aria-hidden', 'false');
+    aiDialog.dataset.returnFocus = 'ai-settings';
+    window.setTimeout(function () { aiForm.querySelector('.custom-select-trigger')?.focus(); }, 0);
 }
 
 aiSettingsButton.addEventListener('click', openAiSettings);
-aiForm.querySelector('[data-ai-settings-close]').addEventListener('click', function () { aiDialog.close(); });
-aiDialog.addEventListener('close', function () {
+function closeAiSettings() {
+    if (!aiDialog.classList.contains('active')) return;
+    aiDialog.classList.remove('active');
+    aiDialog.setAttribute('aria-hidden', 'true');
     aiForm.elements.api_key.value = '';
     aiForm.elements.clear_key.checked = false;
     renderModuleConfig(workflowStore.getState());
+    aiSettingsButton.focus();
+}
+aiForm.querySelector('[data-ai-settings-close]').addEventListener('click', closeAiSettings);
+aiDialog.addEventListener('click', function (event) {
+    if (event.target === aiDialog) closeAiSettings();
+});
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && aiDialog.classList.contains('active')) closeAiSettings();
 });
 aiForm.elements.provider.addEventListener('change', function () {
     aiForm.elements.base_url.value = aiProviderDefaults[aiForm.elements.provider.value];
@@ -259,7 +282,7 @@ aiForm.addEventListener('submit', function (event) {
         aiSettings = response.settings;
         aiSettingsButton.title = aiSettings.configured ? 'AI settings: ' + aiSettings.model : 'AI settings';
         aiFeedback = { message: aiSettings.configured ? 'AI settings saved.' : 'Add an API key before generating.', error: false };
-        aiDialog.close();
+        closeAiSettings();
     }).catch(function (error) {
         settingsStatus(error.message, true);
     }).finally(function () { aiForm.querySelector('fieldset').disabled = false; });
@@ -308,7 +331,7 @@ function queueModuleGeneration() {
     if (aiTimer) window.clearTimeout(aiTimer);
     aiTimer = null;
     var module = workflowStore.getSelectedModule();
-    if (!module || !aiSettings || !aiSettings.configured || !aiSettings.live || module.config.live === false || aiWriting || aiDialog.open) return;
+    if (!module || !aiSettings || !aiSettings.configured || !aiSettings.live || module.config.live === false || aiWriting || aiDialog.classList.contains('active')) return;
     if (!(module.config.prompt || '').trim()) return;
     aiFeedback = { message: 'Waiting for typing...', error: false };
     renderAiOutput(module, workflowStore.getActiveWorkflow());
@@ -583,6 +606,7 @@ function renderAiModuleConfig(state) {
         var value = control.dataset.configRoot === 'true' ? module[control.dataset.configKey] : module.config[control.dataset.configKey];
         var next = value == null ? '' : String(value);
         if (control.value !== next) control.value = next;
+        if (control.tagName === 'SELECT') refreshCustomSelect(control);
     });
     var compactPrompt = moduleConfigPanel.querySelector('[data-ai-prompt] .shared-text-editor');
     if (compactPrompt) updateSharedTextEditor(compactPrompt, compactPrompt.querySelector('[data-ai-prompt-input]'), 'markdown');
@@ -625,6 +649,7 @@ function closeModuleTextEditor() {
     aiTextEditorActive = null;
     moduleConfigPanel.innerHTML = '';
     renderModuleConfig(workflowStore.getState());
+    queueModuleGeneration();
 }
 
 function moduleEditorSurfaceMarkup(kind, ariaLabel, spellcheck) {
@@ -784,10 +809,9 @@ function answerAiFileRequest(decision) {
     var request = aiPendingFileRequest;
     var workflow = workflowStore.getActiveWorkflow();
     var module = workflowStore.getSelectedModule();
-    if (!request || !workflow || !module || workflow.id !== request.workflowId || module.id !== request.moduleId
-        || workflowFingerprint(workflow) !== request.fingerprint) {
+    if (!request || !workflow || !module || workflow.id !== request.workflowId || module.id !== request.moduleId) {
         aiPendingFileRequest = null;
-        aiFeedback = { message: 'The workflow changed. Generate again.', error: true };
+        aiFeedback = { message: 'The selected module changed. Generate again.', error: true };
         renderModuleConfig(workflowStore.getState());
         return;
     }
@@ -807,7 +831,9 @@ function ensureModuleSource(module, workflow) {
     var result = module.config.ai || {};
     if (!path || (result.path === path && typeof result.code === 'string') || module.config.previousPath) return;
     var key = moduleSourceKey(module, workflow);
-    if (aiSourceLoads[key]) return;
+    // A previously loaded path may be revisited after another target was open.
+    // Only suppress an in-flight load (or a failed load until the next user action).
+    if (aiSourceLoads[key] === 'loading' || aiSourceLoads[key] === 'error') return;
     aiSourceLoads[key] = 'loading';
     renderAiOutput(module, workflow);
 

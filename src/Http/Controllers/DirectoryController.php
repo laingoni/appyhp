@@ -297,6 +297,12 @@ class DirectoryController
             abort(500, 'Unable to copy file.');
         }
 
+        $this->transferMetadata(
+            $sourceRelativePath,
+            $this->relativeFromAbsolute($target),
+            $mode === 'copy',
+        );
+
         return response()->json($this->pathPayload($target), 201);
     }
 
@@ -607,6 +613,28 @@ class DirectoryController
             $metadata[$newPath] = $metadata[$oldPath];
             unset($metadata[$oldPath]);
             $this->writeMetadata($metadata);
+        }
+    }
+
+    private function transferMetadata(string $oldPath, string $newPath, bool $copy): void
+    {
+        $metadata = $this->readMetadata();
+        $updates = [];
+
+        foreach ($metadata as $path => $value) {
+            if ($path !== $oldPath && ! Str::startsWith($path, $oldPath . '/')) {
+                continue;
+            }
+
+            $suffix = substr($path, strlen($oldPath));
+            $updates[$newPath . $suffix] = $value;
+            if (! $copy) {
+                unset($metadata[$path]);
+            }
+        }
+
+        if ($updates !== []) {
+            $this->writeMetadata(array_replace($metadata, $updates));
         }
     }
 

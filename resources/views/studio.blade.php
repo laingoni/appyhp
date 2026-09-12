@@ -1926,6 +1926,14 @@
         </div>
     </div>
 
+    <div class="studio-modal" data-directory-delete-modal aria-hidden="true">
+        <div class="studio-modal-card" role="dialog" aria-modal="true" aria-labelledby="directory-delete-title">
+            <div class="studio-modal-header"><strong id="directory-delete-title">Delete project item</strong><button type="button" class="workflow-action" data-directory-delete-close>Close</button></div>
+            <div class="studio-modal-body"><p data-directory-delete-message>This item will be permanently deleted.</p><p class="workflow-meta">This action cannot be undone by Studio.</p></div>
+            <div class="studio-modal-actions"><button type="button" class="workflow-action" data-directory-delete-cancel>Cancel</button><button type="button" class="workflow-action directory-delete-action" data-directory-delete-confirm>Delete item</button></div>
+        </div>
+    </div>
+
     <div class="directory-context-menu" data-directory-context-menu role="dialog" aria-label="Directory actions">
         <div class="directory-context-title" data-directory-context-title></div>
         <div class="directory-context-create" data-directory-context-create>
@@ -2050,6 +2058,9 @@
             var workflowSettingsStatus = document.querySelector('[data-workflow-settings-status]');
             var workflowDeleteModal = document.querySelector('[data-workflow-delete-modal]');
             var workflowDeleteMessage = document.querySelector('[data-workflow-delete-message]');
+            var directoryDeleteModal = document.querySelector('[data-directory-delete-modal]');
+            var directoryDeleteMessage = document.querySelector('[data-directory-delete-message]');
+            var pendingDirectoryDeleteItem = null;
             var directoryContextMenu = document.querySelector('[data-directory-context-menu]');
             var directoryContextTitle = document.querySelector('[data-directory-context-title]');
             var directoryContextCreate = document.querySelector('[data-directory-context-create]');
@@ -2074,6 +2085,120 @@
             var fileNotesInput = document.querySelector('[data-file-notes-input]');
             var fileNotesStatus = document.querySelector('[data-file-notes-status]');
             bindSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
+
+            function closeCustomSelects(except) {
+                document.querySelectorAll('.custom-select.open').forEach(function (wrapper) {
+                    if (wrapper === except) return;
+                    wrapper.classList.remove('open');
+                    wrapper.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
+                    var menu = wrapper.querySelector('.custom-select-menu');
+                    if (menu) menu.hidden = true;
+                });
+            }
+
+            function refreshCustomSelect(select) {
+                var wrapper = select.closest('.custom-select');
+                if (!wrapper) return;
+                var trigger = wrapper.querySelector('.custom-select-trigger');
+                var selected = select.options[select.selectedIndex] || select.options[0];
+                trigger.textContent = selected ? selected.textContent : 'Choose an option';
+                trigger.disabled = select.disabled;
+                wrapper.querySelectorAll('.custom-select-option').forEach(function (option) {
+                    option.setAttribute('aria-selected', option.dataset.value === select.value ? 'true' : 'false');
+                });
+            }
+
+            function enhanceSelect(select) {
+                if (!select || select.dataset.customSelect === 'true') {
+                    if (select) refreshCustomSelect(select);
+                    return;
+                }
+                select.dataset.customSelect = 'true';
+                select.classList.add('native-select-control');
+
+                var wrapper = document.createElement('div');
+                var trigger = document.createElement('button');
+                var menu = document.createElement('div');
+                wrapper.className = 'custom-select';
+                trigger.type = 'button';
+                trigger.className = 'custom-select-trigger';
+                trigger.setAttribute('role', 'combobox');
+                trigger.setAttribute('aria-haspopup', 'listbox');
+                trigger.setAttribute('aria-expanded', 'false');
+                var selectLabel = select.getAttribute('aria-label')
+                    || (select.labels && select.labels[0] ? select.labels[0].textContent.trim() : '')
+                    || 'Choose an option';
+                trigger.setAttribute('aria-label', selectLabel);
+                menu.className = 'custom-select-menu';
+                menu.setAttribute('role', 'listbox');
+                menu.hidden = true;
+
+                Array.prototype.forEach.call(select.options, function (sourceOption) {
+                    var option = document.createElement('button');
+                    option.type = 'button';
+                    option.className = 'custom-select-option';
+                    option.dataset.value = sourceOption.value;
+                    option.textContent = sourceOption.textContent;
+                    option.disabled = sourceOption.disabled;
+                    option.setAttribute('role', 'option');
+                    option.addEventListener('click', function () {
+                        if (sourceOption.disabled) return;
+                        select.value = sourceOption.value;
+                        refreshCustomSelect(select);
+                        closeCustomSelects();
+                        select.dispatchEvent(new Event('input', { bubbles: true }));
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        trigger.focus();
+                    });
+                    menu.appendChild(option);
+                });
+
+                select.parentNode.insertBefore(wrapper, select);
+                wrapper.appendChild(select);
+                wrapper.appendChild(trigger);
+                wrapper.appendChild(menu);
+                trigger.addEventListener('click', function () {
+                    if (select.disabled) return;
+                    var opening = !wrapper.classList.contains('open');
+                    closeCustomSelects(wrapper);
+                    wrapper.classList.toggle('open', opening);
+                    trigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+                    menu.hidden = !opening;
+                    if (opening) {
+                        (menu.querySelector('[aria-selected="true"]') || menu.querySelector('.custom-select-option'))?.focus();
+                    }
+                });
+                trigger.addEventListener('keydown', function (event) {
+                    if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) return;
+                    event.preventDefault();
+                    trigger.click();
+                });
+                menu.addEventListener('keydown', function (event) {
+                    var options = Array.prototype.slice.call(menu.querySelectorAll('.custom-select-option:not(:disabled)'));
+                    var current = options.indexOf(document.activeElement);
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        var offset = event.key === 'ArrowDown' ? 1 : -1;
+                        options[(current + offset + options.length) % options.length]?.focus();
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        closeCustomSelects();
+                        trigger.focus();
+                    }
+                });
+                select.addEventListener('change', function () { refreshCustomSelect(select); });
+                refreshCustomSelect(select);
+            }
+
+            function enhanceSelects(root) {
+                if (root.matches && root.matches('select')) enhanceSelect(root);
+                if (root.querySelectorAll) root.querySelectorAll('select').forEach(enhanceSelect);
+            }
+
+            enhanceSelects(document);
+            document.addEventListener('click', function (event) {
+                if (!event.target.closest('.custom-select')) closeCustomSelects();
+            });
 
             function setSidebarVisible(visible) {
                 sidebarVisible = visible;
@@ -2436,7 +2561,16 @@
                     }
                 }, requestOptions)).then(function (response) {
                     return response.text().then(function (text) {
-                        var payload = text ? JSON.parse(text) : {};
+                        var payload = {};
+                        if (text) {
+                            try {
+                                payload = JSON.parse(text);
+                            } catch (error) {
+                                throw new Error(response.ok
+                                    ? 'The server returned an unreadable response.'
+                                    : 'The request failed with status ' + response.status + '.');
+                            }
+                        }
 
                         if (!response.ok) {
                             throw new Error(payload.message || 'Request failed.');
@@ -3160,6 +3294,22 @@
                         if (revision === savedRevision) {
                             state.workflows = synchronizeModulesByFile((payload.workflows || state.workflows).map(normalizeWorkflow));
                             state.dirty = false;
+                        } else {
+                            payloadWorkflows.forEach(function (savedWorkflow) {
+                                var currentWorkflow = state.workflows.find(function (entry) { return entry.id === savedWorkflow.id; });
+                                if (!currentWorkflow) return;
+                                savedWorkflow.modules.forEach(function (savedModule) {
+                                    var currentModule = currentWorkflow.modules.find(function (entry) { return entry.id === savedModule.id; });
+                                    var savedAi = savedModule.config && savedModule.config.ai;
+                                    var currentAi = currentModule && currentModule.config && currentModule.config.ai;
+                                    if (!savedAi || !currentAi || savedAi.path !== currentAi.path || savedAi.code !== currentAi.code) return;
+                                    currentModule.config.ai = Object.assign({}, currentAi, {
+                                        baseHash: savedAi.baseHash,
+                                        dirty: savedAi.dirty,
+                                        writtenAt: savedAi.writtenAt || currentAi.writtenAt
+                                    });
+                                });
+                            });
                         }
                         if (!state.workflows.some(function (workflow) {
                             return workflow.id === state.selectedWorkflowId;
@@ -3944,6 +4094,7 @@
 
                 activeWorkflowName.textContent = workflow.name;
                 shell.querySelector('[data-workflow-frontend]').value = workflow.meta.frontend || aiProject.frontend || 'blade';
+                refreshCustomSelect(shell.querySelector('[data-workflow-frontend]'));
                 activeWorkflowMeta.textContent = workflow.modules.length + ' modules · ' + workflow.edges.length + ' edges' + (state.dirty ? ' · unsaved changes' : '');
                 workflowEmpty.hidden = true;
                 workflowStage.hidden = false;
@@ -4364,12 +4515,15 @@
                         }
                     }
                     workflowStore.updateModule(module.id, patch, { historyGroup: module.id + ':' + field.key });
-                    queueModuleGeneration();
+                    if (!['folder', 'filename', 'routeType'].includes(field.key)) {
+                        queueModuleGeneration();
+                    }
                 });
 
                 wrapper.appendChild(label);
                 wrapper.appendChild(control);
                 parent.appendChild(wrapper);
+                if (control.tagName === 'SELECT') enhanceSelect(control);
                 return control;
             }
 
@@ -4407,6 +4561,7 @@
                     '<label>Edge type<select data-edge-type><option value="flex">Flex</option><option value="stiff">Stiff</option></select></label>';
 
                 edgeSettingsPopover.querySelector('[data-edge-type]').value = edge.type === 'stiff' ? 'stiff' : 'flex';
+                enhanceSelect(edgeSettingsPopover.querySelector('[data-edge-type]'));
                 edgeSettingsPopover.querySelector('[data-edge-label]').addEventListener('change', function (event) {
                     workflowStore.updateEdge(edge.id, { label: event.target.value });
                 });
@@ -4704,11 +4859,21 @@
 
             function deleteDirectoryContextItem() {
                 if (!directoryContextItem || !directoryContextItem.path) return;
-                var item = directoryContextItem;
-                var message = item.type === 'directory'
-                    ? 'Delete folder "' + item.path + '" and everything inside it?'
-                    : 'Delete file "' + item.path + '"?';
-                if (!window.confirm(message)) return;
+                pendingDirectoryDeleteItem = Object.assign({}, directoryContextItem);
+                directoryDeleteMessage.textContent = pendingDirectoryDeleteItem.type === 'directory'
+                    ? 'Delete folder “' + pendingDirectoryDeleteItem.path + '” and everything inside it?'
+                    : 'Delete file “' + pendingDirectoryDeleteItem.path + '”?';
+                closeDirectoryContextMenu();
+                directoryDeleteModal.classList.add('active');
+                directoryDeleteModal.setAttribute('aria-hidden', 'false');
+                document.querySelector('[data-directory-delete-cancel]').focus();
+            }
+
+            function confirmDirectoryContextDelete() {
+                if (!pendingDirectoryDeleteItem) return;
+                var item = pendingDirectoryDeleteItem;
+                pendingDirectoryDeleteItem = null;
+                closeStudioModal(directoryDeleteModal);
 
                 setDirectoryStatus('Deleting');
                 postJson(directoryUrl('/item'), { path: item.path }, 'DELETE').then(function () {
@@ -5260,6 +5425,11 @@
             document.addEventListener('keydown', function (event) {
                 if (event.key === 'Escape') {
                     closeDirectoryContextMenu();
+                    var activeModal = document.querySelector('.studio-modal.active:not([data-ai-settings-dialog])');
+                    if (activeModal) {
+                        if (activeModal === directoryDeleteModal) pendingDirectoryDeleteItem = null;
+                        closeStudioModal(activeModal);
+                    }
                 }
             });
 
@@ -5281,6 +5451,9 @@
             document.querySelector('[data-workflow-delete-close]').addEventListener('click', function () { closeStudioModal(workflowDeleteModal); });
             document.querySelector('[data-workflow-delete-cancel]').addEventListener('click', function () { closeStudioModal(workflowDeleteModal); });
             document.querySelector('[data-workflow-delete-confirm]').addEventListener('click', workflowStore.confirmDeleteWorkflow);
+            document.querySelector('[data-directory-delete-close]').addEventListener('click', function () { pendingDirectoryDeleteItem = null; closeStudioModal(directoryDeleteModal); });
+            document.querySelector('[data-directory-delete-cancel]').addEventListener('click', function () { pendingDirectoryDeleteItem = null; closeStudioModal(directoryDeleteModal); });
+            document.querySelector('[data-directory-delete-confirm]').addEventListener('click', confirmDirectoryContextDelete);
             document.querySelector('[data-file-info-close]').addEventListener('click', function () { closeStudioModal(fileInfoModal); });
             document.querySelector('[data-file-notes-close]').addEventListener('click', function () { closeStudioModal(fileNotesModal); });
             document.querySelector('[data-file-notes-save]').addEventListener('click', function () {
@@ -5293,7 +5466,7 @@
                     .then(function () { fileNotesStatus.textContent = 'Notes saved.'; })
                     .catch(function (error) { fileNotesStatus.textContent = error.message; });
             });
-            [workflowSettingsModal, workflowDeleteModal, fileInfoModal, fileNotesModal].forEach(function (modal) {
+            [workflowSettingsModal, workflowDeleteModal, directoryDeleteModal, fileInfoModal, fileNotesModal].forEach(function (modal) {
                 modal.addEventListener('click', function (event) {
                     if (event.target === modal) closeStudioModal(modal);
                 });
@@ -5303,6 +5476,12 @@
                 if (event.key === 'theme') {
                     setTheme(event.newValue || 'dark');
                 }
+            });
+
+            window.addEventListener('beforeunload', function (event) {
+                if (!fileDirty && !appyhpStore.getState().dirty && !workflowStore.getState().dirty) return;
+                event.preventDefault();
+                event.returnValue = '';
             });
 
             setSidebarVisible(window.innerWidth > 760);

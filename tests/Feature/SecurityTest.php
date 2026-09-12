@@ -148,4 +148,35 @@ class SecurityTest extends TestCase
             @rmdir($outside);
         }
     }
+
+    public function test_file_notes_follow_copied_and_moved_directories(): void
+    {
+        mkdir(base_path('app/Domain'), 0755, true);
+        file_put_contents(base_path('app/Domain/Rules.php'), '<?php');
+        $this->putJson('/appyhp/api/directories/metadata', [
+            'path' => 'app/Domain/Rules.php',
+            'notes' => 'Business rules used by billing.',
+        ])->assertOk();
+
+        $this->postJson('/appyhp/api/directories/transfer', [
+            'mode' => 'copy',
+            'source' => 'app/Domain',
+            'parent' => 'routes',
+        ])->assertCreated();
+
+        $this->getJson('/appyhp/api/directories/metadata?path=routes%2FDomain%2FRules.php')
+            ->assertOk()
+            ->assertJsonPath('notes', 'Business rules used by billing.');
+
+        mkdir(base_path('app/Archive'));
+        $this->postJson('/appyhp/api/directories/transfer', [
+            'mode' => 'cut',
+            'source' => 'routes/Domain',
+            'parent' => 'app/Archive',
+        ])->assertCreated();
+
+        $this->getJson('/appyhp/api/directories/metadata?path=app%2FArchive%2FDomain%2FRules.php')
+            ->assertOk()
+            ->assertJsonPath('notes', 'Business rules used by billing.');
+    }
 }

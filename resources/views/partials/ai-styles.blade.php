@@ -124,17 +124,19 @@
     .ai-schema td:first-child { font-family: Consolas, monospace; }
     .ai-schema td:nth-child(3) { color: #087c64; }
     .dark .ai-schema td:nth-child(3) { color: #6ee7b7; }
-    .workflow-frontend { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 2px; color: inherit; font: inherit; font-size: 12px; max-width: 160px; min-height: 28px; padding: 3px 5px; }
+    .workflow-frontend { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 7px; color: inherit; font: inherit; font-size: 12px; max-width: 160px; min-height: 30px; padding: 4px 8px; }
     .dark .workflow-frontend { background: var(--dark-canvas); border-color: var(--dark-line); }
-    .ai-settings-dialog { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 6px; color: var(--light-text); max-height: calc(100dvh - 32px); max-width: calc(100% - 24px); padding: 0; width: 480px; }
-    .ai-settings-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+    .ai-settings-modal { z-index: 220; }
+    .ai-settings-dialog { background: var(--light-canvas); border: 1px solid var(--light-line); border-radius: 12px; box-shadow: 0 24px 80px rgba(2, 6, 23, .42); color: var(--light-text); max-height: calc(100dvh - 32px); max-width: calc(100% - 24px); overflow: auto; padding: 0; width: 480px; }
     .dark .ai-settings-dialog { background: var(--dark-canvas); border-color: var(--dark-line); color: var(--dark-text); }
     .ai-settings-header { align-items: center; border-bottom: 1px solid var(--light-line); display: flex; gap: 12px; justify-content: space-between; padding: 12px 16px; }
     .dark .ai-settings-header { border-bottom-color: var(--dark-line); }
     .ai-settings-header h2 { font-size: 16px; margin: 0; }
     .ai-settings-fields { border: 0; display: grid; gap: 14px; margin: 0; min-width: 0; padding: 16px; }
     .ai-settings-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .ai-close { background: transparent; border: 0; color: inherit; cursor: pointer; flex: 0 0 28px; font-family: sans-serif; font-size: 22px; height: 28px; width: 28px; }
+    .ai-close { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 7px; color: inherit; cursor: pointer; display: inline-flex; flex: 0 0 30px; font-family: sans-serif; font-size: 22px; height: 30px; justify-content: center; width: 30px; }
+    .ai-close:hover { background: rgba(100, 116, 139, .12); border-color: var(--light-line); }
+    .dark .ai-close:hover { border-color: var(--dark-line); }
     .ai-settings-dialog .module-config-field label { font-size: 11px; }
     .ai-settings-dialog .module-config-field input, .ai-settings-dialog .module-config-field select { font-size: 13px; min-height: 36px; }
     [data-ai-remove-key][hidden], [data-ai-stop][hidden], [data-ai-table][hidden], [data-ai-suggestions][hidden], [data-ai-setup][hidden] { display: none; }
@@ -171,6 +173,46 @@
     .love-copy:hover, .love-copy:focus-visible { border-color: #0d9477; color: #087c64; }
     .love-copy-status { color: #087c64; font-size: 12px; min-height: 18px; margin: 10px 0 0; }
     .dark .love-copy-status { color: #6ee7b7; }
+
+    /* Consistent, keyboard-friendly controls across static and generated Studio UI. */
+    .workflow-action, .module-type-button, .module-node-action, .workflow-config-action,
+    .manual-save-button, .directory-action, .module-editor-back, .love-copy,
+    .studio-header > .header-right > .icon-button,
+    .studio-header > .header-right > .theme-button { border-radius: 7px; transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease; }
+    .workflow-action:hover, .module-type-button:hover, .workflow-config-action:hover,
+    .manual-save-button:hover, .directory-action:hover { border-color: #94a3b8; }
+    button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible,
+    [role="option"]:focus-visible, [role="combobox"]:focus-visible {
+        outline: 2px solid #0d9477;
+        outline-offset: 2px;
+    }
+    button:active:not(:disabled), .workflow-action:active, .directory-action:active { transform: translateY(1px); }
+    .module-config-field input, .module-config-field textarea, .editor-name, .directory-input { border-radius: 7px; }
+    .studio-modal-card, .workflow-json-card, .directory-context-menu, .edge-settings-popover { border-radius: 10px; }
+    .studio-modal { backdrop-filter: blur(3px); }
+    .studio-modal-actions { border-top: 1px solid var(--light-line); }
+    .dark .studio-modal-actions { border-top-color: var(--dark-line); }
+    .directory-delete-action { border-color: rgba(220, 38, 38, .5) !important; color: #b91c1c; }
+    .dark .directory-delete-action { color: #fca5a5; }
+
+    .custom-select { min-width: 0; position: relative; width: 100%; }
+    .workflow-editor-header .custom-select { max-width: 180px; width: auto; }
+    .native-select-control { height: 1px !important; left: 0 !important; opacity: 0 !important; pointer-events: none !important; position: absolute !important; top: 100% !important; width: 1px !important; }
+    .custom-select-trigger { align-items: center; background: #fff; border: 1px solid var(--light-line); border-radius: 7px; color: #0f172a; cursor: pointer; display: flex; font: inherit; font-size: .75rem; gap: 8px; justify-content: space-between; min-height: 34px; padding: 6px 9px; text-align: left; width: 100%; }
+    .custom-select-trigger::after { border-bottom: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; content: ""; flex: 0 0 auto; opacity: .65; transition: transform .15s ease; }
+    .custom-select.open .custom-select-trigger::after { transform: rotate(180deg); }
+    .dark .custom-select-trigger { background: #0f172a; border-color: #334155; color: #e2e8f0; }
+    .custom-select-trigger:hover { border-color: #94a3b8; }
+    .custom-select-trigger:disabled { cursor: not-allowed; opacity: .5; }
+    .custom-select-menu { background: #fff; border: 1px solid var(--light-line); border-radius: 9px; box-shadow: 0 16px 38px rgba(15, 23, 42, .22); display: grid; gap: 3px; left: 0; margin-top: 5px; max-height: 240px; min-width: max(100%, 180px); overflow: auto; padding: 5px; position: absolute; top: 100%; z-index: 260; }
+    .custom-select-menu[hidden] { display: none; }
+    .dark .custom-select-menu { background: #111827; border-color: #334155; box-shadow: 0 18px 42px rgba(0, 0, 0, .48); }
+    .custom-select-option { background: transparent; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; font-size: .75rem; min-height: 30px; padding: 6px 8px; text-align: left; white-space: nowrap; width: 100%; }
+    .custom-select-option:hover, .custom-select-option:focus-visible { background: #eef2f7; }
+    .dark .custom-select-option:hover, .dark .custom-select-option:focus-visible { background: #243047; }
+    .custom-select-option[aria-selected="true"] { background: rgba(13, 148, 119, .12); color: #087c64; font-weight: 700; }
+    .dark .custom-select-option[aria-selected="true"] { color: #6ee7b7; }
+    .custom-select-option:disabled { cursor: not-allowed; opacity: .45; }
 
     @media (max-width: 1000px) {
         .workflow-workspace > .workflow-config-panel { flex-basis: 62%; }
