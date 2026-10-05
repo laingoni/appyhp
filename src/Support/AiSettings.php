@@ -2,6 +2,7 @@
 
 namespace Alliswell\Appyhp\Support;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -24,7 +25,12 @@ class AiSettings
             $stored = json_decode($contents, true);
             abort_unless(is_array($stored), 500, 'Unable to read AI settings.');
             $encryptedKey = $stored['api_key'] ?? '';
-            $stored['api_key'] = $encryptedKey === '' ? '' : Crypt::decryptString($encryptedKey);
+            try {
+                $stored['api_key'] = $encryptedKey === '' ? '' : Crypt::decryptString($encryptedKey);
+            } catch (DecryptException) {
+                $stored['api_key'] = '';
+                $stored['key_error'] = 'The saved API key could not be decrypted. Enter it again after changing APP_KEY.';
+            }
             $settings = array_replace($settings, $stored);
         }
 

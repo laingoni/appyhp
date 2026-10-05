@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A complete reference for AppyHP's Laravel modules, generated files, and application integration.">
+    <title>Module reference — AppyHP Documentation</title>
+    <link rel="icon" type="image/svg+xml" href="assets/appyhp-icon.svg">
+    <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+    <header class="doc-nav"><div class="wrap"><div class="topbar">
+        <a class="brand" href="index.html"><img class="brand-mark" src="assets/appyhp-icon.svg" alt="">AppyHP</a>
+        <nav class="nav" aria-label="Documentation"><a href="install.html">Install</a><a href="workflows.html">Workflows</a><a href="ai.html">AI</a><a href="files.html">Files</a><a class="button" href="/appyhp/studio">Open Studio</a></nav>
+    </div></div></header>
+    <main class="wrap doc">
+        <div class="eyebrow">Documentation / Module reference</div>
+        <h1>Laravel modules, from intent to source.</h1>
+        <p>Each module maps to a project file. Saving a missing file uses Laravel's Artisan generator when available, or an AppyHP scaffold for services, repositories and frontend pages. These scaffolds are starting points: describe behavior in the prompt, generate or edit the implementation, and test it in your application.</p>
+        <p>Graph connections describe architecture and provide AI context. Creating a file does not automatically install a dependency, register middleware, run a migration or start a worker. Complete the Laravel integration described below after reviewing the generated code.</p>
+        <nav aria-label="Module categories"><ul>
+            <li><a href="docs/modules/routes.html">Routes</a> · <a href="#controllers">Controllers and middleware</a> · <a href="#requests">Requests</a> · <a href="#resources">Resources</a></li>
+            <li><a href="#models">Models</a> · <a href="#database">Tables, migrations, factories and seeders</a></li>
+            <li><a href="#services">Services and repositories</a> · <a href="#jobs">Jobs, commands, events and listeners</a></li>
+            <li><a href="#auth">Policies and authentication</a> · <a href="#views">Views, components and Inertia</a></li>
+            <li><a href="#notifications">Notifications and mail</a> · <a href="#config">Queue, cache and storage configuration</a></li>
+        </ul></nav>
+
+        <h2 id="controllers">Controllers and middleware</h2>
+        <p><strong>Controller:</strong> target <code>app/Http/Controllers/InvoiceController.php</code>, or a nested application namespace. Actions containing <code>create</code> or <code>edit</code> produce a resource controller; API resource actions produce an API controller; <code>__invoke</code> produces an invokable controller. Add your orchestration logic and register the controller in a route.</p>
+        <p><strong>Middleware:</strong> target <code>app/Http/Middleware/EnsureSubscribed.php</code>. Define the check and call the next handler when allowed. Register aliases or groups in the host application's <code>bootstrap/app.php</code>, or use the middleware class directly on a route.</p>
+        <pre>Validate the invoice with StoreInvoiceRequest, authorize creation,
+call the connected InvoiceService, and return an InvoiceResource.</pre>
+
+        <h2 id="requests">Form requests</h2>
+        <p>Target <code>app/Http/Requests/StoreInvoiceRequest.php</code>. Set validation rules and an explicit authorization decision. Laravel's generated request initially denies authorization; implement <code>authorize()</code> before using it. Type-hint the request in the controller and use its validated data.</p>
+
+        <h2 id="resources">API resources</h2>
+        <p>Target <code>app/Http/Resources/InvoiceResource.php</code>. Define the public response in <code>toArray()</code> and avoid leaking credentials or internal fields. Return the resource from a controller and use <code>InvoiceResource::collection($invoices)</code> for lists. Include pagination and optional loaded relationships in the prompt.</p>
+
+        <h2 id="models">Eloquent models</h2>
+        <p>Target <code>app/Models/Invoice.php</code>. Describe the table, assignable fields, casts and relationships. Connect models to their table and to the controllers or services using them. Review mass assignment and hidden attributes before accepting user input. A model scaffold does not create its database table automatically.</p>
+
+        <h2 id="database">Tables, migrations, factories and seeders</h2>
+        <p><strong>Table:</strong> represents a table-creation migration in <code>database/migrations</code>. Use a unique timestamped filename, such as <code>2026_10_05_000000_create_invoices_table.php</code>. Describe column types, nullable fields, defaults, foreign keys and indexes. The AI table preview describes the draft, not a live database inspection.</p>
+        <p><strong>Migration:</strong> represents a schema change. Specify the existing table and operation, and review both <code>up()</code> and <code>down()</code>. Create a new migration for a deployed schema instead of editing a migration that has already run.</p>
+        <p><strong>Factory:</strong> target <code>database/factories/InvoiceFactory.php</code>; the filename must end with <code>Factory.php</code>. Set the model and provide realistic fixture attributes. <strong>Seeder:</strong> target <code>database/seeders/InvoiceSeeder.php</code>, implement <code>run()</code>, and call it from <code>DatabaseSeeder</code> when appropriate.</p>
+        <p>Review generated migrations before running <code>php artisan migrate</code>. AppyHP does not execute migrations or seeders. Back up important data before applying schema changes.</p>
+
+        <h2 id="services">Services and repositories</h2>
+        <p>Services in <code>app/Services</code> coordinate business operations; repositories in <code>app/Repositories</code> can encapsulate data access where useful. AppyHP creates plain PHP classes because Laravel has no mandatory repository or service base class. Namespaces follow Composer's PSR-4 mappings. Inject concrete classes into controllers; bind interfaces in a service provider when using abstractions.</p>
+
+        <h2 id="jobs">Jobs, commands, events and listeners</h2>
+        <p><strong>Job:</strong> target <code>app/Jobs/ProcessInvoice.php</code> and implement <code>handle()</code>. Define retries, timeouts and idempotency for work that may run more than once. Configure the queue connection and run <code>php artisan queue:work</code> for asynchronous processing.</p>
+        <p><strong>Command:</strong> target <code>app/Console/Commands/SyncInvoices.php</code>. Review the signature, arguments, options and exit status. Schedule recurring execution in <code>routes/console.php</code> and configure Laravel's scheduler on the server.</p>
+        <p><strong>Event:</strong> target <code>app/Events/InvoicePaid.php</code> and describe its payload. <strong>Listener:</strong> target <code>app/Listeners/SendInvoiceReceipt.php</code>, specify the event and whether it should be queued, then implement its handler. Verify discovery with <code>php artisan event:list</code>; register unusual listener locations explicitly.</p>
+
+        <h2 id="auth">Policies and authentication</h2>
+        <p><strong>Policy:</strong> target <code>app/Policies/InvoicePolicy.php</code> and optionally identify the model. Implement each authorization rule and call it through a controller, gate or route. Keep the conventional model-policy naming for discovery, or register the mapping explicitly.</p>
+        <p><strong>Auth:</strong> targets <code>config/auth.php</code> using Laravel's configuration publisher. Review guards, providers and password brokers. This module configures authentication; it does not install login screens or a starter kit. Existing configuration files are preserved until you explicitly edit or publish a draft.</p>
+
+        <h2 id="views">Blade views, components and Inertia</h2>
+        <p><strong>View:</strong> target <code>resources/views/invoices/index.blade.php</code>, then render it with <code>view('invoices.index', $data)</code>. Escape user content using Blade's regular echo syntax.</p>
+        <p><strong>Component:</strong> target <code>app/View/Components/InvoiceCard.php</code>. AppyHP requests an inline component scaffold so creating a class only writes the chosen file. Move the template to a Blade view yourself if preferred.</p>
+        <p><strong>Inertia Page:</strong> target <code>resources/js/Pages/Invoices/Index.vue</code>, <code>.jsx</code>/<code>.tsx</code> for React, or <code>.svelte</code>. The module inherits the workflow frontend unless overridden. Install the matching Inertia client adapter, configure page resolution and Vite, and return <code>Inertia::render('Invoices/Index', $props)</code> from the controller.</p>
+        <p><strong>Inertia Middleware:</strong> target <code>app/Http/Middleware/HandleInertiaRequests.php</code>. Install <code>inertiajs/inertia-laravel</code>, configure its root Blade view and shared props, and append the middleware to your web group in <code>bootstrap/app.php</code>. A scaffold can be prepared before the adapter is installed, but requires it to run.</p>
+
+        <h2 id="notifications">Notifications and mail</h2>
+        <p><strong>Notification:</strong> target <code>app/Notifications/InvoicePaidNotification.php</code>. Choose delivery channels and define their messages. The recipient needs Laravel's notification support; database notifications also require the notifications table.</p>
+        <p><strong>Mail:</strong> target <code>app/Mail/InvoiceReceipt.php</code>. Define envelope, content and any attachment handling. Configure the host application's mail transport and use a local log or testing transport while developing. Queue delivery when appropriate and test it with Laravel's notification or mail fakes.</p>
+
+        <h2 id="config">Queue, cache and storage</h2>
+        <p>These modules publish Laravel's <code>config/queue.php</code>, <code>config/cache.php</code> and <code>config/filesystems.php</code>. Keep environment-specific credentials in environment variables. Provision each backend before using it; database queues and caches need their tables, while Redis needs a running service.</p>
+        <p>Use private disks for sensitive files, and create a public storage link only for content intended to be public. After changing configuration, clear or rebuild the host application's configuration cache. Studio uses its own file sessions and file-backed AI throttle, so it can open before database setup.</p>
+
+        <h2>Finish and verify your implementation</h2>
+        <ol><li>Check the target path and the complete generated source.</li><li>Save the draft, then review the changes in Git.</li><li>Register required routes, middleware or bindings in Laravel.</li><li>Run your application's tests, migrations and frontend build as appropriate.</li><li>Keep AppyHP installed as a development dependency and disabled on public production deployments.</li></ol>
+        <p><a href="https://laravel.com/docs/13.x">Laravel 13 documentation</a> · <a href="files.html">Working with project files</a></p>
+    </main>
+    <footer class="footer"><div class="wrap"><span>AppyHP docs</span><a href="index.html">Back to overview</a></div></footer>
+    <script src="assets/site.js"></script>
+</body>
+</html>

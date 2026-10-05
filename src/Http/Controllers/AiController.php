@@ -119,7 +119,7 @@ class AiController
     {
         $input = $request->validate([
             'path' => ['required', 'string', 'max:700'],
-            'content' => ['required', 'string', 'max:' . ProjectFiles::MAX_BYTES],
+            'content' => ['present', 'string', 'max:' . ProjectFiles::MAX_BYTES],
             'expectedHash' => ['present', 'nullable', 'string', 'size:64'],
         ]);
 

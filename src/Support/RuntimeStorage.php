@@ -10,12 +10,26 @@ class RuntimeStorage
         if ($root === '' || (! str_starts_with($root, DIRECTORY_SEPARATOR) && preg_match('/\A[A-Za-z]:[\\\\\/]/', $root) !== 1)) {
             throw new \RuntimeException('APPYHP_RUNTIME_PATH must be an absolute path.');
         }
+        $normalized = str_replace('\\', '/', $root);
+        if (in_array('..', explode('/', $normalized), true)) {
+            throw new \RuntimeException('APPYHP_RUNTIME_PATH cannot contain parent traversal.');
+        }
+        $public = rtrim(str_replace('\\', '/', public_path()), '/');
+        if ($normalized === $public || str_starts_with($normalized, $public . '/')) {
+            throw new \RuntimeException('APPYHP_RUNTIME_PATH must be outside the public web directory.');
+        }
+        if ($relative !== '' && (str_contains($relative, '..') || str_contains($relative, '\\') || str_starts_with($relative, '/'))) {
+            throw new \InvalidArgumentException('Runtime paths must be relative and cannot contain parent traversal.');
+        }
 
         return $relative === '' ? $root : $root . DIRECTORY_SEPARATOR . ltrim($relative, DIRECTORY_SEPARATOR);
     }
 
     public function ensure(string $relative = '', int $mode = 0700): string
     {
+        if ($relative !== '') {
+            $this->ensure();
+        }
         $path = $this->path($relative);
         if (! is_dir($path) && ! mkdir($path, $mode, true) && ! is_dir($path)) {
             throw new \RuntimeException('Unable to create Appyhp runtime directory.');
@@ -25,7 +39,6 @@ class RuntimeStorage
         }
 
         if ($relative === '') {
-            $this->migrateLegacyStorage($path);
             $this->secureKnownPaths($path);
         }
 
@@ -59,28 +72,24 @@ class RuntimeStorage
         }
     }
 
-    private function migrateLegacyStorage(string $target): void
+    public function synchronized(string $name, callable $callback): mixed
     {
-        $legacy = storage_path('app/appyhp');
-        if (! is_dir($legacy) || realpath($legacy) === realpath($target)) {
-            return;
+        if (! preg_match('/\A[a-z-]+\z/', $name)) {
+            throw new \InvalidArgumentException('Invalid runtime lock name.');
         }
-
-        $items = scandir($legacy);
-        if ($items === false) {
-            return;
+        $handle = fopen($this->ensure() . DIRECTORY_SEPARATOR . $name . '.lock', 'c');
+        if ($handle === false) {
+            throw new \RuntimeException('Unable to open the Appyhp state lock.');
         }
-
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') {
-                continue;
+        try {
+            if (! flock($handle, LOCK_EX)) {
+                throw new \RuntimeException('Unable to lock Appyhp state.');
             }
 
-            $source = $legacy . DIRECTORY_SEPARATOR . $item;
-            $destination = $target . DIRECTORY_SEPARATOR . $item;
-            if (! file_exists($destination)) {
-                @rename($source, $destination);
-            }
+            return $callback();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
     }
 

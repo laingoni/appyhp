@@ -3,6 +3,7 @@ name: Tests
 on:
   push:
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -26,3 +27,28 @@ jobs:
       - run: composer validate --strict
       - run: composer audit --locked
       - run: composer test
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+        env:
+          APPYHP_BROWSER_ARTIFACTS: ${{ runner.temp }}/appyhp-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: ${{ runner.temp }}/appyhp-screenshots

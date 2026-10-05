@@ -7,6 +7,37 @@ use Alliswell\Appyhp\Tests\TestCase;
 
 class SecurityTest extends TestCase
 {
+    public function test_registered_routes_are_disabled_when_mode_changes_to_dist(): void
+    {
+        config(['appyhp.mode' => 'dist']);
+        $this->get('/appyhp/studio')->assertNotFound();
+        $this->getJson('/appyhp/api/workflows')->assertNotFound();
+        $this->putJson('/appyhp/api/workflows', ['workflows' => []])->assertNotFound();
+    }
+
+    public function test_remote_access_requires_a_token_even_for_an_allowed_ip(): void
+    {
+        config(['appyhp.allowed_ips' => ['203.0.113.0/24']]);
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])->get('/appyhp/studio')->assertForbidden();
+        config(['appyhp.access_token' => 'long-random-development-token']);
+        $this->withBasicAuth('appyhp', 'long-random-development-token')->get('/appyhp/studio')->assertOk();
+    }
+
+    public function test_symlink_aliases_cannot_read_or_modify_protected_files(): void
+    {
+        file_put_contents(base_path('.env'), 'APP_KEY=keep-private');
+        symlink(base_path('.env'), base_path('app/Alias.php'));
+        symlink(base_path('app'), base_path('Linked'));
+        $this->getJson('/appyhp/api/directories/file?path=app%2FAlias.php')->assertUnprocessable();
+        $this->getJson('/appyhp/api/directories?path=Linked')->assertUnprocessable();
+        $this->putJson('/appyhp/api/directories/file', [
+            'path' => 'Linked/New.php', 'content' => '<?php',
+        ])->assertUnprocessable();
+        $this->deleteJson('/appyhp/api/directories/item', ['path' => 'Linked/Alias.php'])->assertUnprocessable();
+        $this->assertSame('APP_KEY=keep-private', file_get_contents(base_path('.env')));
+        $this->assertFileDoesNotExist(base_path('app/New.php'));
+    }
+
     public function test_studio_is_local_only_by_default(): void
     {
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])

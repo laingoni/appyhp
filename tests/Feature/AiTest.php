@@ -18,6 +18,25 @@ use RuntimeException;
 
 class AiTest extends TestCase
 {
+    public function test_the_module_editor_can_save_an_intentionally_empty_file(): void
+    {
+        $path = base_path('routes/web.php');
+        file_put_contents($path, '<?php // remove this');
+        $this->postJson('/appyhp/api/ai/file', [
+            'path' => 'routes/web.php', 'content' => '', 'expectedHash' => hash_file('sha256', $path),
+        ])->assertOk()->assertJsonPath('hash', hash('sha256', ''));
+        $this->assertSame('', file_get_contents($path));
+    }
+
+    public function test_unreadable_stored_keys_can_be_replaced_from_settings(): void
+    {
+        app(\Alliswell\Appyhp\Support\RuntimeStorage::class)->writeJson('ai-settings.json', $this->settings(['api_key' => 'invalid-ciphertext']));
+        $this->getJson('/appyhp/api/ai/settings')->assertOk()
+            ->assertJsonPath('settings.has_key', false)->assertJsonStructure(['settings' => ['key_error']]);
+        $this->putJson('/appyhp/api/ai/settings', $this->settings())->assertOk()->assertJsonPath('settings.has_key', true);
+        $this->assertSame('test-secret-key', app(AiSettings::class)->read()['api_key']);
+    }
+
     public function test_studio_loads_without_database_session_or_cache_tables(): void
     {
         $this->get('/appyhp/studio')

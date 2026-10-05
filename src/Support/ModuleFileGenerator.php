@@ -3,6 +3,7 @@
 namespace Alliswell\Appyhp\Support;
 
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -42,7 +43,44 @@ class ModuleFileGenerator
     public function generate(string $relativePath, string $type, array $config): string
     {
         $relativePath = trim(str_replace('\\', '/', $relativePath), '/');
-        $target = base_path($relativePath);
+        $target = (new ProjectFiles)->resolve($relativePath);
+        $supported = array_merge(array_keys(self::ARTISAN_GENERATORS), [
+            'route', 'table', 'migration', 'service', 'repository', 'inertia-page',
+            'inertia-middleware', 'auth', 'queue', 'cache', 'storage',
+        ]);
+        if (! in_array($type, $supported, true)) {
+            throw ValidationException::withMessages(['moduleType' => 'Choose a supported Laravel module type.']);
+        }
+        Validator::make($config, [
+            'actions' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'model' => ['sometimes', 'nullable', 'string', 'regex:/\A[A-Za-z_][A-Za-z0-9_\\\\]*\z/'],
+            'listensTo' => ['sometimes', 'nullable', 'string', 'regex:/\A[A-Za-z_][A-Za-z0-9_\\\\]*\z/'],
+            'rootView' => ['sometimes', 'string', 'regex:/\A[A-Za-z0-9_.-]+\z/'],
+            'name' => ['sometimes', 'string', 'max:160'],
+            'table' => ['sometimes', 'string', 'regex:/\A[a-zA-Z_][a-zA-Z0-9_]*\z/'],
+        ])->validate();
+        if (in_array($type, ['table', 'migration'], true)
+            && ! preg_match('/\A[a-zA-Z_][a-zA-Z0-9_]*\z/', (string) ($config['name'] ?? 'records'))) {
+            throw ValidationException::withMessages(['moduleConfig.name' => 'Use a valid table or migration identifier.']);
+        }
+        if (! in_array($type, ['view', 'inertia-page'], true) && ! str_ends_with($relativePath, '.php')) {
+            throw ValidationException::withMessages(['path' => 'PHP modules must use a .php filename.']);
+        }
+        if (in_array($type, array_merge(array_diff(array_keys(self::ARTISAN_GENERATORS), ['view']), ['service', 'repository', 'inertia-middleware']), true)) {
+            $class = pathinfo($relativePath, PATHINFO_FILENAME);
+            $namespace = $this->namespaceFor($relativePath);
+            try {
+                token_get_all("<?php namespace {$namespace}; class {$class} {}", TOKEN_PARSE);
+            } catch (\ParseError) {
+                throw ValidationException::withMessages(['path' => 'Choose a valid PHP namespace and class filename.']);
+            }
+        }
+        if ($type === 'factory' && ! str_ends_with($relativePath, 'Factory.php')) {
+            throw ValidationException::withMessages(['path' => 'Factory class filenames must end with Factory.php.']);
+        }
+        if (is_file($target) && filesize($target) > 0) {
+            throw ValidationException::withMessages(['path' => 'The module file already exists. Open it to edit its contents.']);
+        }
         $this->ensureParentDirectory(dirname($target));
 
         if ($this->generateWithArtisan($relativePath, $type, $config) && is_file($target)) {
@@ -84,8 +122,11 @@ class ModuleFileGenerator
         }
 
         $name = $this->nameWithinRoot($relativePath, $generator['root'], $type === 'view');
+        if (str_starts_with($generator['root'], 'app/') && str_starts_with($relativePath, 'app/')) {
+            $name = $this->namespaceFor($relativePath) . '\\' . pathinfo($relativePath, PATHINFO_FILENAME);
+        }
         if ($name === null) {
-            return false;
+            throw ValidationException::withMessages(['path' => 'Choose a folder under ' . $generator['root'] . ' for this Laravel module.']);
         }
 
         $arguments = ['name' => $name];
@@ -107,9 +148,17 @@ class ModuleFileGenerator
             if (($config['queued'] ?? 'no') === 'yes') {
                 $arguments['--queued'] = true;
             }
+        } elseif ($type === 'component') {
+            // Keep generation scoped to the chosen file; a component view may
+            // otherwise be written through a different, unvalidated path.
+            $arguments['--inline'] = true;
         }
 
-        return $this->call($generator['command'], $arguments);
+        if (! $this->call($generator['command'], $arguments) || ! is_file(base_path($relativePath))) {
+            throw ValidationException::withMessages(['path' => 'Laravel could not generate this module. Check the class name, target folder and installed dependencies.']);
+        }
+
+        return true;
     }
 
     /**
@@ -250,8 +299,9 @@ class ModuleFileGenerator
 
         if ($type === 'inertia-middleware') {
             $class = pathinfo($path, PATHINFO_FILENAME);
+            $namespace = $this->namespaceFor($path);
 
-            return "<?php\n\nnamespace App\\Http\\Middleware;\n\nuse Illuminate\\Http\\Request;\nuse Inertia\\Middleware;\n\nclass {$class} extends Middleware\n{\n    protected \$rootView = '" . addslashes((string) ($config['rootView'] ?? 'app')) . "';\n\n    public function share(Request \$request): array\n    {\n        return [\n            ...parent::share(\$request),\n        ];\n    }\n}\n";
+            return "<?php\n\nnamespace {$namespace};\n\nuse Illuminate\\Http\\Request;\nuse Inertia\\Middleware;\n\nclass {$class} extends Middleware\n{\n    protected \$rootView = '" . addslashes((string) ($config['rootView'] ?? 'app')) . "';\n\n    public function share(Request \$request): array\n    {\n        return [\n            ...parent::share(\$request),\n        ];\n    }\n}\n";
         }
 
         if (in_array($type, ['table', 'migration'], true)) {
@@ -262,12 +312,37 @@ class ModuleFileGenerator
         }
 
         $class = pathinfo($path, PATHINFO_FILENAME);
-        $namespace = 'App';
-        if (str_starts_with($path, 'app/')) {
-            $directory = trim(str_replace('/', '\\', dirname(substr($path, 4))), '.\\');
-            $namespace .= $directory === '' ? '' : '\\' . $directory;
-        }
+        $namespace = $this->namespaceFor($path);
 
         return "<?php\n\nnamespace {$namespace};\n\nclass {$class}\n{\n    //\n}\n";
+    }
+
+    private function namespaceFor(string $path): string
+    {
+        $namespaces = (new ProjectFiles)->project()['namespaces'];
+        $matches = [];
+        foreach ($namespaces as $namespace => $roots) {
+            foreach ((array) $roots as $root) {
+                $root = trim(str_replace('\\', '/', $root), '/') . '/';
+                if (str_starts_with($path, $root)) {
+                    $directory = trim(str_replace('/', '\\', dirname(substr($path, strlen($root)))), '.\\');
+                    $matches[$root] = rtrim($namespace, '\\') . ($directory === '' ? '' : '\\' . $directory);
+                }
+            }
+        }
+        if ($matches !== []) {
+            uksort($matches, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+            return reset($matches);
+        }
+        foreach (['database/factories/' => 'Database\\Factories', 'database/seeders/' => 'Database\\Seeders'] as $root => $namespace) {
+            if (str_starts_with($path, $root)) {
+                $directory = trim(str_replace('/', '\\', dirname(substr($path, strlen($root)))), '.\\');
+
+                return $namespace . ($directory === '' ? '' : '\\' . $directory);
+            }
+        }
+
+        throw ValidationException::withMessages(['path' => 'Add a Composer PSR-4 namespace for this module folder first.']);
     }
 }

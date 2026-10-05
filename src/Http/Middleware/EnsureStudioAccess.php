@@ -2,6 +2,7 @@
 
 namespace Alliswell\Appyhp\Http\Middleware;
 
+use Alliswell\Appyhp\Support\StudioMode;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\IpUtils;
@@ -11,12 +12,17 @@ class EnsureStudioAccess
 {
     public function handle(Request $request, Closure $next): Response
     {
+        // Cached development routes must also become inaccessible in dist mode.
+        abort_unless(StudioMode::enabled(), 404);
+
         $allowed = config('appyhp.allowed_ips', ['127.0.0.1', '::1']);
         $allowed = is_array($allowed) ? array_values(array_filter($allowed, 'is_string')) : [];
 
         abort_unless($allowed !== [] && IpUtils::checkIp((string) $request->ip(), $allowed), 403, 'Appyhp Studio is not available from this address.');
 
         $token = (string) config('appyhp.access_token', '');
+        abort_if($token === '' && ! IpUtils::checkIp((string) $request->ip(), ['127.0.0.1', '::1']), 403,
+            'Configure APPYHP_ACCESS_TOKEN before allowing remote Studio access.');
         if ($token !== '' && ($request->getUser() !== 'appyhp' || ! hash_equals($token, (string) $request->getPassword()))) {
             abort(response('Appyhp Studio authentication is required.', 401, [
                 'WWW-Authenticate' => 'Basic realm="AppyHP Studio", charset="UTF-8"',

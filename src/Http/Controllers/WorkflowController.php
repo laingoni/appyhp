@@ -5,6 +5,7 @@ namespace Alliswell\Appyhp\Http\Controllers;
 use Alliswell\Appyhp\Support\RuntimeStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class WorkflowController
 {
@@ -12,24 +13,23 @@ class WorkflowController
 
     public function index(): JsonResponse
     {
-        $workflows = $this->readWorkflows();
-        $this->writeWorkflows($workflows);
-
-        return response()->json([
-            'workflows' => $workflows,
-        ]);
+        return $this->runtime->synchronized('workflows', fn () => response()->json([
+            'workflows' => $this->readWorkflows(),
+            'revision' => $this->revision(),
+        ]));
     }
 
     public function store(Request $request): JsonResponse
     {
         abort_if(strlen($request->getContent()) > 5242880, 413, 'The workflow payload is too large.');
         $payload = $request->validate([
-            'workflows' => ['required', 'array', 'max:100'],
+            'expectedRevision' => ['sometimes', 'nullable', 'string', 'size:64'],
+            'workflows' => ['present', 'array', 'list', 'max:100'],
             'workflows.*' => ['array'],
             'workflows.*.id' => ['nullable', 'string', 'max:160'],
             'workflows.*.name' => ['nullable', 'string', 'max:300'],
             'workflows.*.description' => ['nullable', 'string', 'max:10000'],
-            'workflows.*.modules' => ['sometimes', 'array', 'max:300'],
+            'workflows.*.modules' => ['sometimes', 'array', 'list', 'max:300'],
             'workflows.*.modules.*' => ['array'],
             'workflows.*.modules.*.id' => ['nullable', 'string', 'max:160'],
             'workflows.*.modules.*.type' => ['nullable', 'string', 'max:80'],
@@ -38,7 +38,7 @@ class WorkflowController
             'workflows.*.modules.*.x' => ['sometimes', 'numeric', 'between:-100000,100000'],
             'workflows.*.modules.*.y' => ['sometimes', 'numeric', 'between:-100000,100000'],
             'workflows.*.modules.*.config' => ['sometimes', 'array'],
-            'workflows.*.edges' => ['sometimes', 'array', 'max:1000'],
+            'workflows.*.edges' => ['sometimes', 'array', 'list', 'max:1000'],
             'workflows.*.edges.*' => ['array'],
             'workflows.*.edges.*.id' => ['nullable', 'string', 'max:160'],
             'workflows.*.edges.*.from' => ['nullable', 'string', 'max:160'],
@@ -49,12 +49,23 @@ class WorkflowController
         ]);
 
         $workflows = $this->normalizeWorkflows($payload['workflows']);
-        $this->writeWorkflows($workflows);
+        $this->validateGraph($workflows);
 
-        return response()->json([
-            'workflows' => $workflows,
-            'saved' => true,
-        ]);
+        return $this->runtime->synchronized('workflows', function () use ($workflows, $payload): JsonResponse {
+            // Never replace unreadable saved drafts with an empty/starter graph.
+            $this->readWorkflows();
+            if (array_key_exists('expectedRevision', $payload)) {
+                abort_unless($payload['expectedRevision'] === $this->revision(), 409,
+                    'Workflows changed in another Studio tab. Download your workflow to keep these edits, then reload before saving.');
+            }
+            $this->writeWorkflows($workflows);
+
+            return response()->json([
+                'workflows' => $workflows,
+                'revision' => $this->revision(),
+                'saved' => true,
+            ]);
+        });
     }
 
     /**
@@ -70,20 +81,41 @@ class WorkflowController
 
         $contents = file_get_contents($path);
 
-        if ($contents === false || trim($contents) === '') {
-            return [$this->starterWorkflow()];
-        }
-
-        $decoded = json_decode($contents, true);
-
-        if (! is_array($decoded)) {
-            return [$this->starterWorkflow()];
-        }
+        $decoded = $contents === false ? null : json_decode($contents, true);
+        abort_unless(is_array($decoded) && (array_is_list($decoded) || is_array($decoded['workflows'] ?? null)),
+            422, 'Saved workflows could not be read. Restore workflows.json from a backup; the existing file has been preserved.');
 
         $source = array_is_list($decoded) ? $decoded : ($decoded['workflows'] ?? []);
         $workflows = $this->normalizeWorkflows(is_array($source) ? $source : []);
 
-        return $workflows === [] ? [$this->starterWorkflow()] : $workflows;
+        return $workflows;
+    }
+
+    private function revision(): ?string
+    {
+        $path = $this->workflowPath();
+
+        return is_file($path) ? hash_file('sha256', $path) : null;
+    }
+
+    private function validateGraph(array $workflows): void
+    {
+        $ids = array_column($workflows, 'id');
+        if (count($ids) !== count(array_unique($ids))) {
+            throw ValidationException::withMessages(['workflows' => 'Each workflow must have a unique ID.']);
+        }
+        foreach ($workflows as $index => $workflow) {
+            $modules = array_column($workflow['modules'], 'id');
+            $edges = array_column($workflow['edges'], 'id');
+            if (count($modules) !== count(array_unique($modules)) || count($edges) !== count(array_unique($edges))) {
+                throw ValidationException::withMessages(["workflows.$index" => 'Module and connection IDs must be unique within a workflow.']);
+            }
+            foreach ($workflow['edges'] as $edge) {
+                if (! in_array($edge['from'], $modules, true) || ! in_array($edge['to'], $modules, true)) {
+                    throw ValidationException::withMessages(["workflows.$index.edges" => 'Connections must reference modules in the same workflow.']);
+                }
+            }
+        }
     }
 
     /**

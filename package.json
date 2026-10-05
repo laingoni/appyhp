@@ -1,0 +1,11 @@
+{
+  "name": "appyhp-browser-tests",
+  "private": true,
+  "scripts": {
+    "test": "node tests/browser.mjs",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

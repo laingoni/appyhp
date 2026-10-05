@@ -7,6 +7,43 @@ use PHPUnit\Framework\Attributes\DataProvider;
 
 class ModuleFileGenerationTest extends TestCase
 {
+    public function test_controllers_in_domain_folders_use_the_real_laravel_stub(): void
+    {
+        $this->putJson('/appyhp/api/directories/file', [
+            'path' => 'app/Domain/Billing/InvoiceController.php', 'content' => '',
+            'createOnly' => true, 'moduleType' => 'controller', 'moduleConfig' => ['actions' => '__invoke'],
+        ])->assertOk()->assertJsonPath('generation', 'artisan');
+        $source = file_get_contents(base_path('app/Domain/Billing/InvoiceController.php'));
+        $this->assertStringContainsString('namespace App\\Domain\\Billing;', $source);
+        $this->assertStringContainsString('public function __invoke', $source);
+    }
+
+    public function test_services_follow_custom_composer_namespaces(): void
+    {
+        file_put_contents(base_path('composer.json'), json_encode(['autoload' => ['psr-4' => ['Company\\' => 'app/']]]));
+        $this->putJson('/appyhp/api/directories/file', [
+            'path' => 'app/Services/InvoiceService.php', 'content' => '', 'createOnly' => true,
+            'moduleType' => 'service', 'moduleConfig' => [],
+        ])->assertOk();
+        $this->assertStringContainsString('namespace Company\\Services;', file_get_contents(base_path('app/Services/InvoiceService.php')));
+    }
+
+    public function test_invalid_class_names_and_migration_identifiers_are_rejected(): void
+    {
+        foreach (['class', 'Bad-Name'] as $name) {
+            $this->putJson('/appyhp/api/directories/file', [
+                'path' => "app/Services/$name.php", 'content' => '', 'createOnly' => true,
+                'moduleType' => 'service', 'moduleConfig' => [],
+            ])->assertUnprocessable();
+            $this->assertFileDoesNotExist(base_path("app/Services/$name.php"));
+        }
+        $this->putJson('/appyhp/api/directories/file', [
+            'path' => 'database/migrations/unsafe.php', 'content' => '', 'createOnly' => true,
+            'moduleType' => 'table', 'moduleConfig' => ['name' => '../escape'],
+        ])->assertUnprocessable();
+        $this->assertFileDoesNotExist(database_path('migrations/unsafe.php'));
+    }
+
     public function test_module_files_use_laravel_artisan_generators(): void
     {
         $response = $this->putJson('/appyhp/api/directories/file', [

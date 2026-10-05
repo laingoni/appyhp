@@ -242,7 +242,7 @@ function openAiSettings() {
     aiForm.elements.debounce_ms.value = values.debounce_ms;
     refreshCustomSelect(aiForm.elements.provider);
     refreshKeyPlaceholder();
-    settingsStatus('', false);
+    settingsStatus(values.key_error || '', Boolean(values.key_error));
     aiDialog.classList.add('active');
     aiDialog.setAttribute('aria-hidden', 'false');
     aiDialog.dataset.returnFocus = 'ai-settings';
@@ -894,6 +894,8 @@ function renderAiOutput(module, workflow) {
     var stale = Boolean(result.code && result.contextHash && result.contextHash !== workflowFingerprint(workflow));
     var path = module.config.folder + '/' + module.config.filename;
     var codeEl = moduleConfigPanel.querySelector('[data-ai-code]');
+    // The prompt and file editors replace this panel while generation continues.
+    if (!codeEl) return;
     if (codeEl.dataset.source !== code) {
         var follow = codeEl.scrollHeight - codeEl.scrollTop - codeEl.clientHeight < 35;
         codeEl.value = code;

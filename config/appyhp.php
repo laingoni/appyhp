@@ -13,8 +13,8 @@ return [
         'trim',
         explode(',', (string) env('APPYHP_MIDDLEWARE', ''))
     ))),
-    // Package-local context is ignored by git and created lazily for development installs.
-    'runtime_path' => env('APPYHP_RUNTIME_PATH', dirname(__DIR__) . DIRECTORY_SEPARATOR . '.appyhp'),
+    // State belongs to the host application and must survive Composer updates.
+    'runtime_path' => env('APPYHP_RUNTIME_PATH', storage_path('app/appyhp')),
 
     'ai' => [
         'provider' => env('APPY_AI_PROVIDER', 'openai'),

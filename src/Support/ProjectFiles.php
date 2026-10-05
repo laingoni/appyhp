@@ -10,6 +10,9 @@ class ProjectFiles
 
     public function resolve(string $relative): string
     {
+        if (in_array(strtolower(basename($relative)), ['auth.json', 'credentials.json'], true)) {
+            throw ValidationException::withMessages(['path' => 'Credential files cannot be accessed by AI.']);
+        }
         $parts = explode('/', $relative);
         $roots = config('appyhp.ai.source_roots', []);
         if (! in_array($parts[0], $roots, true) || count($parts) < 2
@@ -28,6 +31,11 @@ class ProjectFiles
             }
         }
 
+        $runtime = app(RuntimeStorage::class)->path();
+        if ($path === $runtime || str_starts_with($path, $runtime . DIRECTORY_SEPARATOR)) {
+            throw ValidationException::withMessages(['path' => 'AppyHP runtime state cannot be accessed as project source.']);
+        }
+
         return $path;
     }
 
@@ -43,6 +51,7 @@ class ProjectFiles
         $content = file_get_contents($path);
         abort_if($content === false, 500, 'Unable to read the target file.');
         abort_if(str_contains($content, "\0"), 415, 'The target must be a text source file.');
+        abort_unless(preg_match('//u', $content) === 1, 415, 'The target must contain valid UTF-8 text.');
 
         return ['path' => $relative, 'exists' => true, 'hash' => hash('sha256', $content), 'content' => $content];
     }

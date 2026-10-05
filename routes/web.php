@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 
 $configuredMiddleware = config('appyhp.middleware', []);
 $studioMiddleware = array_merge(
-    [EncryptCookies::class, StudioSession::class, EnsureStudioAccess::class],
+    [EnsureStudioAccess::class, EncryptCookies::class, StudioSession::class],
     is_array($configuredMiddleware) ? $configuredMiddleware : [],
 );
 

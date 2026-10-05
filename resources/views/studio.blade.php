@@ -138,6 +138,8 @@
 
         .studio-shell.sidebar-closed .studio-sidebar {
             opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
             width: 0;
         }
 
@@ -2084,6 +2086,9 @@
             var fileNotesEditorShell = document.querySelector('[data-file-notes-editor-shell]');
             var fileNotesInput = document.querySelector('[data-file-notes-input]');
             var fileNotesStatus = document.querySelector('[data-file-notes-status]');
+            var fileNotesSave = document.querySelector('[data-file-notes-save]');
+            var fileNotesPath = null;
+            var fileNotesRequest = 0;
             bindSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
 
             function closeCustomSelects(except) {
@@ -2750,7 +2755,7 @@
                         .then(function (setup) {
                             state.activePanel = normalizePanel(setup.activePanel);
                             state.autosave = Boolean(setup.autosave);
-                            state.sidebarVisible = setup.sidebarVisible !== false;
+                            state.sidebarVisible = window.innerWidth > 760 && setup.sidebarVisible !== false;
                             state.dirty = false;
                             notify();
                         })
@@ -3147,6 +3152,8 @@
                 var autosaveTimer = null;
                 var savePromise = null;
                 var revision = 0;
+                var serverRevision = null;
+                var loaded = false;
                 var historyGroup = null;
                 var historyGroupTime = 0;
 
@@ -3253,6 +3260,8 @@
 
                     return requestJson(workflowUrl())
                         .then(function (payload) {
+                            serverRevision = payload.revision;
+                            loaded = true;
                             state.workflows = synchronizeModulesByFile((payload.workflows || []).map(normalizeWorkflow));
                             state.selectedWorkflowId = state.workflows[0] ? state.workflows[0].id : null;
                             state.selectedModuleId = null;
@@ -3273,6 +3282,11 @@
                 }
 
                 function save() {
+                    if (!loaded) {
+                        var loadError = new Error('Workflows have not loaded. Reload Studio before saving.');
+                        setWorkflowStatus(loadError.message);
+                        return Promise.reject(loadError);
+                    }
                     if (autosaveTimer) {
                         clearTimeout(autosaveTimer);
                         autosaveTimer = null;
@@ -3286,11 +3300,20 @@
                     state.saving = true;
                     notify();
 
-                    savePromise = publishGeneratedFiles(payloadWorkflows).then(function () {
+                    // Save drafts and check the revision before touching project files.
+                    savePromise = postJson(workflowUrl(), {
+                        workflows: payloadWorkflows,
+                        expectedRevision: serverRevision
+                    }, 'PUT').then(function (payload) {
+                        serverRevision = payload.revision;
+                        return publishGeneratedFiles(payloadWorkflows);
+                    }).then(function () {
                         return postJson(workflowUrl(), {
-                            workflows: payloadWorkflows
+                            workflows: payloadWorkflows,
+                            expectedRevision: serverRevision
                         }, 'PUT');
                     }).then(function (payload) {
+                        serverRevision = payload.revision;
                         if (revision === savedRevision) {
                             state.workflows = synchronizeModulesByFile((payload.workflows || state.workflows).map(normalizeWorkflow));
                             state.dirty = false;
@@ -5288,6 +5311,12 @@
             }
 
             function openFileNotes() {
+                var request = ++fileNotesRequest;
+                fileNotesPath = selectedFilePath;
+                fileNotesInput.disabled = true;
+                fileNotesSave.disabled = true;
+                fileNotesInput.value = '';
+                updateSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
                 fileNotesModal.classList.add('active');
                 fileNotesModal.setAttribute('aria-hidden', 'false');
                 if (!selectedFilePath) {
@@ -5297,12 +5326,15 @@
                     return;
                 }
                 fileNotesStatus.textContent = 'Loading...';
-                requestJson(directoryUrl('/metadata', { path: selectedFilePath })).then(function (payload) {
+                requestJson(directoryUrl('/metadata', { path: fileNotesPath })).then(function (payload) {
+                    if (request !== fileNotesRequest || !fileNotesModal.classList.contains('active')) return;
                     fileNotesInput.value = payload.notes || '';
+                    fileNotesInput.disabled = false;
+                    fileNotesSave.disabled = false;
                     updateSharedTextEditor(fileNotesEditorShell, fileNotesInput, 'markdown');
                     fileNotesStatus.textContent = '';
                     fileNotesInput.focus();
-                }).catch(function (error) { fileNotesStatus.textContent = error.message; });
+                }).catch(function (error) { if (request === fileNotesRequest) fileNotesStatus.textContent = error.message; });
             }
 
             function updateFullscreenIcon() {
@@ -5457,12 +5489,12 @@
             document.querySelector('[data-file-info-close]').addEventListener('click', function () { closeStudioModal(fileInfoModal); });
             document.querySelector('[data-file-notes-close]').addEventListener('click', function () { closeStudioModal(fileNotesModal); });
             document.querySelector('[data-file-notes-save]').addEventListener('click', function () {
-                if (!selectedFilePath) {
+                if (!fileNotesPath || fileNotesInput.disabled) {
                     fileNotesStatus.textContent = 'Select a file before saving notes.';
                     return;
                 }
                 fileNotesStatus.textContent = 'Saving...';
-                postJson(directoryUrl('/metadata'), { path: selectedFilePath, notes: fileNotesInput.value }, 'PUT')
+                postJson(directoryUrl('/metadata'), { path: fileNotesPath, notes: fileNotesInput.value }, 'PUT')
                     .then(function () { fileNotesStatus.textContent = 'Notes saved.'; })
                     .catch(function (error) { fileNotesStatus.textContent = error.message; });
             });

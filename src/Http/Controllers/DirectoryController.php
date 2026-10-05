@@ -83,9 +83,11 @@ class DirectoryController
             abort(409, 'A file or folder already exists with that name.');
         }
 
-        if (file_put_contents($target, '') === false) {
+        $handle = @fopen($target, 'x');
+        if ($handle === false) {
             abort(500, 'Unable to create file.');
         }
+        fclose($handle);
 
         return response()->json($this->pathPayload($target), 201);
     }
@@ -123,6 +125,7 @@ class DirectoryController
         abort_if($relativePath === '' || str_ends_with($relativePath, '/'), 422, 'Choose a filename.');
         $file = $this->basePath() . DIRECTORY_SEPARATOR . $relativePath;
         $this->assertInsideBase($file);
+        $this->assertNoLinks($relativePath);
 
         if (is_link($file)) {
             abort(422, 'Module files cannot target symbolic links.');
@@ -149,12 +152,29 @@ class DirectoryController
             );
         } elseif (! $createOnly || ! file_exists($file)) {
             $this->resolveExistingPath($this->parentRelativePath($relativePath));
-            if (is_file($file)) {
+            $exists = is_file($file);
+            if ($exists) {
                 abort_unless($request->exists('expectedHash'), 422, 'Reload the file before saving it.');
-                abort_unless(hash_file('sha256', $file) === $request->input('expectedHash'), 409, 'The file changed since it was opened. Reload it before saving.');
             }
-            if (file_put_contents($file, $content, LOCK_EX) === false) {
-                abort(500, 'Unable to save file.');
+            $handle = @fopen($file, $exists ? 'r+b' : 'x+b');
+            abort_if($handle === false, 409, 'Unable to open the file. Reload it and check its permissions.');
+            try {
+                abort_unless(flock($handle, LOCK_EX), 500, 'Unable to lock the file.');
+                $current = stream_get_contents($handle);
+                abort_unless(! $exists || hash('sha256', $current) === $request->input('expectedHash'),
+                    409, 'The file changed since it was opened. Reload it before saving.');
+                rewind($handle);
+                abort_unless(ftruncate($handle, 0), 500, 'Unable to save file.');
+                $written = 0;
+                while ($written < strlen($content)) {
+                    $bytes = fwrite($handle, substr($content, $written));
+                    abort_if($bytes === false || $bytes === 0, 500, 'Unable to finish saving the file.');
+                    $written += $bytes;
+                }
+                fflush($handle);
+            } finally {
+                flock($handle, LOCK_UN);
+                fclose($handle);
             }
         }
 
@@ -286,12 +306,14 @@ class DirectoryController
             abort(409, 'A file or folder already exists with that name.');
         }
 
+        if (is_dir($source)) {
+            $this->assertDirectoryContainsNoLinks($source);
+        }
         if ($mode === 'cut') {
             if (! rename($source, $target)) {
                 abort(500, 'Unable to move item.');
             }
         } elseif (is_dir($source)) {
-            $this->assertDirectoryContainsNoLinks($source);
             $this->copyDirectory($source, $target);
         } elseif (! copy($source, $target)) {
             abort(500, 'Unable to copy file.');
@@ -315,6 +337,7 @@ class DirectoryController
         $target = $this->resolveExistingPath($relativePath);
 
         if (is_dir($target)) {
+            $this->assertDirectoryContainsNoLinks($target);
             $this->deleteDirectory($target);
         } elseif (! unlink($target)) {
             abort(500, 'Unable to delete file.');
@@ -470,7 +493,8 @@ class DirectoryController
             }
 
             $path = $directory . DIRECTORY_SEPARATOR . $item;
-            abort_if(is_link($path), 422, 'Folders containing symbolic links cannot be copied.');
+            abort_if(is_link($path), 422, 'Folders containing symbolic links cannot be changed.');
+            abort_if($this->isProtectedPath($this->relativeFromAbsolute($path)), 403, 'This folder contains protected files and cannot be changed.');
             if (is_dir($path)) {
                 $this->assertDirectoryContainsNoLinks($path);
             }
@@ -515,6 +539,7 @@ class DirectoryController
 
     private function resolveExistingPath(string $relativePath): string
     {
+        $this->assertNoLinks($relativePath);
         $path = $this->basePath() . ($relativePath === '' ? '' : DIRECTORY_SEPARATOR . $relativePath);
         $resolved = realpath($path);
 
@@ -523,6 +548,15 @@ class DirectoryController
         }
 
         return $this->assertInsideBase($resolved);
+    }
+
+    private function assertNoLinks(string $relativePath): void
+    {
+        $path = $this->basePath();
+        foreach (array_filter(explode('/', $relativePath)) as $part) {
+            $path .= DIRECTORY_SEPARATOR . $part;
+            abort_if(is_link($path), 422, 'Project paths cannot use symbolic links.');
+        }
     }
 
     private function assertInsideBase(string $absolutePath): string
@@ -567,6 +601,11 @@ class DirectoryController
         }
 
         $normalized = strtolower(implode('/', $parts));
+        $absolute = $this->basePath() . '/' . implode('/', $parts);
+        $runtime = str_replace('\\', '/', $this->runtime->path());
+        if ($absolute === $runtime || str_starts_with($absolute, $runtime . '/')) {
+            return true;
+        }
         if ($normalized === 'storage' || str_starts_with($normalized, 'storage/')
             || $normalized === 'bootstrap/cache' || str_starts_with($normalized, 'bootstrap/cache/')) {
             return true;

@@ -31,10 +31,10 @@ try {
         await new Promise((done) => setTimeout(done, 100));
         if (attempt === 99) throw new Error(`Fixture server did not start: ${serverLog}`);
     }
-    browser = await chromium.launch({ headless: true, executablePath: process.env.APPYHP_CHROME || '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+    browser = await chromium.launch({ headless: true, executablePath: process.env.APPYHP_CHROME || undefined, args: ['--no-sandbox'] });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
     const errors = [];
-    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('pageerror', (error) => errors.push(error.stack || error.message));
     page.setDefaultTimeout(15000);
     await page.goto(`${url}/appyhp/studio`);
     await page.locator('.module-node').first().waitFor();

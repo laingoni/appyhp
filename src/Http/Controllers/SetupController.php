@@ -22,7 +22,6 @@ class SetupController
     public function show(): JsonResponse
     {
         $setup = $this->readSetup();
-        $this->writeSetup($setup);
 
         return response()->json($setup);
     }
